@@ -24,7 +24,7 @@ And export the tranformed values to a file:
 File.open('results.json', 'w+') {|f|f.puts result.to_json }
 ```
 
-## How to testo
+## How to test
 
 We have an example on [examples/rails_test](examples/rails_test) that you can
 use:
