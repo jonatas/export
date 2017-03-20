@@ -22,6 +22,16 @@ describe Export do
     subject { users_table }
     its(:name) { is_expected.to include('users') }
     its(:replacements) { is_expected.to include(:password, :email, :full_name) }
+
+    context 'without block definition' do
+      let(:table_without_spec) do
+      end
+      specify do
+        expect do
+          Export.table 'test'
+        end.not_to raise_error
+      end
+    end
   end
 
   User = Struct.new(:full_name, :email, :password)

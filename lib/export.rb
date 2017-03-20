@@ -63,7 +63,7 @@ module Export
   #      replace :full_name, -> { "Contact Name" }
   def self.table(name, &block)
     object = Export::Table.new(name: name)
-    object.instance_exec(&block)
+    object.instance_exec(&block) if block_given?
     object
   end
 end
