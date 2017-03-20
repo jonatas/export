@@ -4,21 +4,68 @@ exported.
 Example:
 
 ```ruby
-export 'users' do
+users_table = Export.table 'users' do
+  replace :full_name, -> { FFaker::Name.name }
   replace :password, 'password'
-  modify :email, (record) -> { strip_email(record.email) }
-  modify :full_name, -> { FFaker::namesA.name }
+  replace :email, -> (r) { "#{r.email.split('@').first}@example.com" }
+end
+```
+
+And then is possible to apply your rules with the tables:
+
+```ruby
+dump = Export::Dump.new(users_table)
+result = dump.process(User.all)
+```
+
+And export the tranformed values to a file:
+
+```ruby
+File.open('results.json', 'w+') {|f|f.puts result.to_json }
+```
+
+## How to testo
+
+We have an example on [examples/rails_test](examples/rails_test) that you can
+use:
+
+```bash
+cd examples/rails_test
+rake db:setup    # Populate with some seeds
+rake export:init # Generate the default configuration
+```
+
+It will generate an initial suggestion with setting up the configuration:
+
+```
+Export.table 'users' do
+  replace :full_name, -> { FFaker::Name.name }
+  replace :password, 'password'
+  replace :email, -> (r) { "#{r.email.split('@').first}@example.com" }
 end
 
-export 'billing' do
-  mask :credit_card, with: "X"
-  modify :address, -> { Faker::Address.street_name }
-end
+Export.table 'addresses'
+```
 
-export 'history', limit: 3.months
+To test all the process:
 
-def strip_email email
- username = email.split('@').first
- "#{username}@example.com"
+```
+rake export:dump
+```
+
+Check the normalized results under `results.json` file.
+
+### TODO
+
+- [ ] Make `Export::Dump` accepts multiple tables
+- [ ] Make it load the generated dump file
+- [ ] Explore SQL, yml and and other data formats
+- [ ] Port `lib/tasks/export.rake` from rails example to the lib
+- [ ] Allow use `fake :full_name` syntax
+
+```ruby
+Export.table 'users' do
+  fake :full_name
+  fake :email
 end
 ```
