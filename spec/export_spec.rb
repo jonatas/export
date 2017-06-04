@@ -28,8 +28,6 @@ describe Export do
     end
 
     context 'without block definition' do
-      let(:table_without_spec) do
-      end
       specify do
         expect do
           Export.table 'test'
@@ -47,7 +45,7 @@ describe Export do
 
     context 'multiple tables' do
       subject { Export.full_table 'users', 'categories' }
-      specify do 
+      specify do
         expect(subject.map(&:name)).to eq(['users', 'categories'])
         expect(subject.map(&:replacements)).to all(be_empty)
       end

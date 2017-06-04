@@ -1,7 +1,6 @@
 require 'spec_helper'
 
 describe Export::Dump do
-  let(:since) { Time.now - 3600 * 24 * 30 }
   subject do
     Export.dump 'production' do
       table :users, where: ["created_at > ?", '2017-06-04']
@@ -11,7 +10,7 @@ describe Export::Dump do
     end
   end
 
-  describe '.table' do
+  describe '#options' do
     its(:options) do
       is_expected
         .to have_key(:users)
@@ -27,14 +26,14 @@ describe Export::Dump do
     end
   end
 
-  describe '.all' do
+  describe '#all' do
     it 'mark options as :all' do
       options_for = subject.options.values_at(:categories, :products)
       expect(options_for).to all(eq :all)
     end
   end
 
-  describe '.options_for' do
+  describe '#options_for' do
     it ':where' do
       expect(subject.options_for(:where, ["created_at > ?", '2017-06-04']))
     end
@@ -56,7 +55,7 @@ describe Export::Dump do
     end
   end
 
-  describe '.has_dependents?' do
+  describe '#has_dependents?' do
     specify do
       expect(subject.has_dependents?(:users)).to be_truthy
       expect(subject.has_dependents?(:orders)).to be_truthy

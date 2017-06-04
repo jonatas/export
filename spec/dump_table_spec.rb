@@ -20,7 +20,6 @@ describe Export::DumpTable do
 
   let(:users) do
     [
-
       User.new('Jônatas Paganini', 'jonatasdp@gmail.com', 'myPreciousSecret', Time.now, Time.now + 3600 * 24),
       User.new('Leandro Heuert', 'leandroh@gmail.com', 'LeandroLOL', Time.now, Time.now + 3600 * 24 * 2)
     ]
@@ -29,7 +28,6 @@ describe Export::DumpTable do
   let(:categories) do
     [ Category.new("A"), Category.new("B") ]
   end
-
 
   let(:dump) { described_class.new(users_table) }
   let(:sample_data) { users }
