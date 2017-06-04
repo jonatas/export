@@ -65,7 +65,7 @@ Export.table '#{table}'
       replace :email, -> (record) { strip_email(record.email) }
       replace :full_name, -> (record) { record.full_name.reverse }
     end
-    dump = Export::Dump.new(table)
+    dump = Export::DumpTable.new(table)
     Benchmark.bm do |bm|
       bm.report("fetch records") { @users = User.all.to_a }
       bm.report("dump process") { @result = dump.process(@users) }

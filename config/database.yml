@@ -1,0 +1,3 @@
+test:
+  database: export_test
+  adapter: sqlite3
