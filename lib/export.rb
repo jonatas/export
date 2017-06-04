@@ -18,6 +18,12 @@ module Export
       @replacements[info] ||= []
       @replacements[info] << with_value
     end
+
+    def ignore(*columns)
+      columns.each do |column|
+        replace(column, nil)
+      end
+    end
   end
 
   # Dump a table with specific replacements
@@ -39,7 +45,7 @@ module Export
     def apply_replacements!(record)
       table.replacements.each do |field, modifiers|
         modifiers.each do |modifier|
-          value = value_from(modifier, record)
+          value = modifier && value_from(modifier, record)
           record.public_send("#{field}=", value)
         end
       end
@@ -61,6 +67,7 @@ module Export
   #      replace :password, 'password'
   #      replace :email, -> (record) { strip_email(record.email) }
   #      replace :full_name, -> { "Contact Name" }
+  #      ignore :created_at, :updated_at
   def self.table(name, &block)
     object = Export::Table.new(name: name)
     object.instance_exec(&block) if block_given?
