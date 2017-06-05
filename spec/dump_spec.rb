@@ -68,7 +68,7 @@ describe Export::Dump do
       subject.fetch_data(:users)
     end
 
-    class AddUsersTable < ActiveRecord::Migration
+    class AddUsersTable < ActiveRecord::Migration[5.0]
       def up
         create_table :users do |t|
           t.string :email, :name
