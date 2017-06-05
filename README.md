@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/jonatas/export.svg?branch=master)](https://travis-ci.org/jonatas/export)
+
 The idea is implement a simple way to describe what and how should the data be
 exported.
 
