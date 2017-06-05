@@ -17,7 +17,7 @@ end
 And then is possible to apply your rules with the tables:
 
 ```ruby
-dump = Export::Dump.new(users_table)
+dump = Export::DumpTable.new(users_table)
 result = dump.process(User.all)
 ```
 
@@ -26,6 +26,27 @@ And export the tranformed values to a file:
 ```ruby
 File.open('results.json', 'w+') {|f|f.puts result.to_json }
 ```
+
+Currently you can also specify a dump schema, to fetch a specific scenario of
+data:
+
+
+```ruby
+Export.dump 'last 3 monts user' do
+  table :users, where: ["created_at > ?",  3.months.ago]
+
+  all :categories, :products
+
+  table :orders, depends_on: :users
+  table :order_items, depends_on: :orders
+end
+```
+
+- `all` include all records from n `*tables` obviously.
+- `table` alloy you to specify the following options:
+ - `where: <condition>` with a SQL condition
+ - `depends_on: <table>` look for export of `<table>` and apply a scope for it
+
 
 ## How to test
 
@@ -60,7 +81,6 @@ Check the normalized results under `results.json` file.
 
 ### TODO
 
-- [ ] Make `Export::Dump` accepts multiple tables
 - [ ] Make it load the generated dump file
 - [ ] Explore SQL, yml and and other data formats
 - [ ] Port `lib/tasks/export.rake` from rails example to the lib
