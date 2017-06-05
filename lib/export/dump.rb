@@ -19,9 +19,24 @@ module Export
       end
     end
 
+    def fetch_data table_name
+      sql = "select * from #{table_name.to_s}"
+      if options = @options[table_name]
+        key, value = options.first.to_a
+        condition = options_for(key,value)
+        sql << " where #{condition}" if condition
+      end
+
+      data = ActiveRecord::Base.connection.execute sql
+      if has_dependents?(table_name)
+        @exported[table_name] = data.map{|e|e['id']}
+      end
+      data
+    end
+
     def options_for(key, value)
       if key == :where
-        " where #{sql_condition_for(value)}"
+        sql_condition_for(value)
       elsif key == :all
         # no conditions
       elsif key == :depends_on
@@ -30,11 +45,15 @@ module Export
         fail "what #{key} does? The value is: #{value}"
       end
     end
-    def process
-      @schema.map do |table, data|
 
-        table.process(data)
+    def process
+      File.open(@schema, 'w+') do |file|
+        file.puts data_to_export
       end
+    end
+
+    def data_to_export
+
     end
 
     def sql_condition_for(value)
