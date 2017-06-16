@@ -20,7 +20,9 @@ module Export
     end
 
     def fetch
-      fetch_order.map(&method(:fetch_data))
+      fetch_order.map do |table|
+        {table => fetch_data(table)}
+      end.inject(&:merge)
     end
 
     def fetch_data table_name
@@ -29,6 +31,7 @@ module Export
         if options.respond_to? :first
           key, value = options.first.to_a
           condition = options_for(key,value)
+          puts condition if condition
           sql << " where #{condition}" if condition
         end
       end

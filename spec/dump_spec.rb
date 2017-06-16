@@ -88,23 +88,26 @@ describe Export::Dump do
       expect do
         subject.fetch_data(:users)
         subject.fetch_data(:orders)
-      end
-        .to change { subject.exported }
-        .from({})
-        .to({users: [1], orders: [1,4]})
+      end.to change { subject.exported }
     end
   end
 
   describe '#fetch' do
-
     include_examples 'database setup'
 
     it 'works in sequence applying filters' do
-      expect { subject.fetch }
-        .to change { subject.exported }
-        .from({})
-        .to({users: [1], orders: [1,4]})
-    end
+      expect {
+        data = subject.fetch
 
+        expect(data).to have_key(:users)
+          .and have_key(:categories)
+          .and have_key(:products)
+          .and have_key(:orders)
+          .and have_key(:order_items)
+
+        expect(data[:users].map{|e|e['id']}).to eq([1])
+        expect(data[:orders].map{|e|e['user_id']}.uniq).to eq([1])
+      }.to change { subject.exported }
+    end
   end
 end

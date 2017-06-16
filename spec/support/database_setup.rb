@@ -1,17 +1,6 @@
-RSpec.shared_examples "database setup" do
-
+RSpec.shared_examples "database setup" do |users: 2, orders: 5, products: 10, categories: 4, orders_items: 30|
 
   class CreateSchema < ActiveRecord::Migration[5.0]
-      ORDERS = [
-        [1, 'finalized', '2017-06-04','2017-06-05'],
-        [2, 'started',   '2017-06-03','null'],
-        [3, 'shipped',   '2017-06-09','null'],
-        [1, 'shipped',   '2017-06-09','2017-06-12']
-      ]
-
-      INSERT_ORDERS = "insert into orders(user_id, status, created_at, updated_at) values(?, ?, ?, ?)"
-
-
     def up
       create_table :users do |t|
         t.string :email, :name
@@ -41,16 +30,6 @@ RSpec.shared_examples "database setup" do
         t.timestamps
       end
 
-      user = Class.new(ActiveRecord::Base) do
-        self.table_name = :users
-      end
-
-      2.times do
-        user.create email: FFaker::Internet.email,
-          name: FFaker::Name.name
-      end
-
-      insert ORDERS, INSERT_ORDERS
     end
 
     def down
@@ -70,6 +49,46 @@ RSpec.shared_examples "database setup" do
 
   before do
     CreateSchema.new.up
+    model = proc do |table_name|
+      Class.new(ActiveRecord::Base) do
+        self.table_name = table_name
+        scope :random, -> { offset(rand(count)).first }
+      end
+    end
+
+    user = model[:users]
+    category = model[:categories]
+    product = model[:products]
+    order = model[:orders]
+    order_items = model[:order_items]
+
+    users.times do
+      user.create email: FFaker::Internet.email,
+        name: FFaker::Name.name
+    end
+
+    categories.times do
+      category.create label: FFaker::Product.model,
+        description: FFaker::Lorem.paragraph
+    end
+
+    products.times do
+      product.create name: FFaker::Product.name,
+        category_id: category.random.id
+    end
+
+    orders.times do
+      order.create user_id: user.random.id
+    end
+
+    orders_items.times do
+      order_items.create order_id: order.random.id,
+        product_id: product.random.id,
+        quantity: rand(3),
+        price: rand(10) + rand(10).to_f / 10
+
+    end
+
   end
 
   after do
