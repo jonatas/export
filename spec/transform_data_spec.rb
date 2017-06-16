@@ -1,10 +1,10 @@
 require 'spec_helper'
 
-describe Export::DumpTable do
+describe Export::TransformData do
   User = Struct.new(:full_name, :email, :password, :created_at, :updated_at)
   Category = Struct.new(:name)
 
-  let(:users_table) do
+  before do
     Export.table 'users' do
       replace :password, 'password'
       replace :email, ->(record) { strip_email(record.email) }
@@ -29,7 +29,7 @@ describe Export::DumpTable do
     [ Category.new("A"), Category.new("B") ]
   end
 
-  let(:dump) { described_class.new(users_table) }
+  let(:dump) { described_class.new('users') }
   let(:sample_data) { users }
 
   describe '#process' do

@@ -3,7 +3,7 @@ require 'active_support/inflector'
 require 'active_record'
 require 'export/table'
 require 'export/dump'
-require 'export/dump_table'
+require 'export/transform_data'
 
 # Allow to export a specific table
 module Export
@@ -34,5 +34,17 @@ module Export
   #   end
   def self.dump(schema_name, &block)
     Export::Dump.new(schema_name, &block)
+  end
+
+  def self.replacements
+    @replacements ||= {}
+  end
+
+  def self.replacements_for(table_name)
+    replacements[table_name] && replacements[table_name].replacements
+  end
+
+  def self.clear_table_replacements!
+    @replacements = nil
   end
 end

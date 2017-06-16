@@ -17,7 +17,7 @@ end
 And then is possible to apply your rules with the tables:
 
 ```ruby
-dump = Export::DumpTable.new(users_table)
+dump = Export::TransformData.new('users')
 result = dump.process(User.all)
 ```
 

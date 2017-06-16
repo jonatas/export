@@ -1,5 +1,5 @@
 module Export
-  class DumpTable
+  class TransformData
     attr_reader :table
     def initialize(table)
       @table = table
@@ -15,7 +15,7 @@ module Export
     private
 
     def apply_replacements!(record)
-      table.replacements.each do |field, modifiers|
+      Export.replacements_for(@table).each do |field, modifiers|
         modifiers.each do |modifier|
           value = modifier && value_from(modifier, record)
           record.public_send("#{field}=", value)

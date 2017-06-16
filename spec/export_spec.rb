@@ -19,6 +19,12 @@ describe Export do
     end
   end
 
+  let(:addresses_table) do
+    Export.table 'addresses' do
+      replace :street, -> (record) { "Not provided" }
+    end
+  end
+
   describe '.table' do
     subject { users_table }
     its(:name) { is_expected.to include('users') }
@@ -49,6 +55,21 @@ describe Export do
         expect(subject.map(&:name)).to eq(['users', 'categories'])
         expect(subject.map(&:replacements)).to all(be_empty)
       end
+    end
+  end
+
+  describe '.replacements' do
+    before { users_table and addresses_table }
+    it 'stores table replacements' do
+      expect(Export.replacements).to have_key('users').and have_key('addresses')
+    end
+  end
+
+  describe '.replacements_for' do
+    before { users_table }
+    it do
+      expect(Export.replacements_for('users'))
+        .to have_key(:password).and have_key(:email).and have_key(:full_name)
     end
   end
 end
