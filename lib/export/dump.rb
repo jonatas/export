@@ -20,27 +20,26 @@ module Export
     end
 
     def fetch
-      fetch_order.map do |table|
+      @options.keys.map do |table|
         {table => fetch_data(table)}
       end.inject(&:merge)
     end
 
     def fetch_data table_name
-      sql = "select * from #{table_name.to_s}"
-      if options = @options[table_name]
-        if options.respond_to? :first
-          key, value = options.first.to_a
-          condition = options_for(key,value)
-          puts condition if condition
-          sql << " where #{condition}" if condition
-        end
-      end
+      @exported[table_name] ||=
+        begin
+          sql = "select * from #{table_name.to_s}"
+          if options = @options[table_name]
+            if options.respond_to? :first
+              key, value = options.first.to_a
+              condition = options_for(key,value)
+              puts condition if condition
+              sql << " where #{condition}" if condition
+            end
+          end
 
-      data = ActiveRecord::Base.connection.execute sql
-      if has_dependents?(table_name)
-        @exported[table_name] = data.map{|e|e['id']}
-      end
-      data
+          ActiveRecord::Base.connection.execute sql
+        end
     end
 
     def options_for(key, value)
@@ -49,7 +48,7 @@ module Export
       elsif key == :all
         # no conditions
       elsif key == :depends_on
-        "#{value.to_s.singularize}_id in (#{exported_ids_for(value).join(',')})"
+        sql_condition_for(instance_exec(&value))
       else
         fail "what #{key} does? The value is: #{value}"
       end
@@ -57,28 +56,16 @@ module Export
 
     def process
       File.open(@schema, 'w+') do |file|
-        file.puts data_to_export
+        file.puts fetch
       end
-    end
-
-    def data_to_export
-
     end
 
     def sql_condition_for(value)
       ActiveRecord::Base.__send__(:sanitize_sql, value)
     end
 
-    def exported_ids_for(table)
-      @exported[table] || []
-    end
-
-    def has_dependents? table
-      @options.values.grep(Hash).any?{|v| v[:depends_on] && v[:depends_on] == table}
-    end
-
-    def fetch_order
-      @options.keys.sort_by{|k|has_dependents?(k) ? 0 : 1}
+    def ids_for_exported(table)
+      fetch_data(table).map{|e|e['id']}
     end
   end
 end

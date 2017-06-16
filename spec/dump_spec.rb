@@ -5,8 +5,8 @@ describe Export::Dump do
     Export.dump 'production' do
       table :users, where: ["id in (?)",[1]]
       all :categories, :products
-      table :orders, depends_on: :users
-      table :order_items, depends_on: :orders
+      table :orders, depends_on: -> { ["user_id in (?)", ids_for_exported(:users) ] }
+      table :order_items, depends_on: -> { ["order_id in (?)", ids_for_exported(:orders) ] }
     end
   end
 
@@ -34,54 +34,37 @@ describe Export::Dump do
   end
 
   describe '#options_for' do
-    it ':where' do
+    it 'where:' do
       expect(subject.options_for(:where, ["created_at > ?", '2017-06-04']))
     end
 
-    it ':all' do
-      expect(subject.options_for(:all,nil)).to be_nil
-    end
+    context 'depends_on:' do
+      include_examples 'database setup'
+      let(:options_for) do
+        subject.options_for(:depends_on, -> { ["user_id in (?)", ids_for_exported(:users)] })
+      end
 
-    context 'depends_on' do
-      let(:depends) { subject.options_for(:depends_on, :users) }
       it 'generates where with depends on id column' do
-        expect(depends).to eq("user_id in ()")
-      end
-
-      it 'injects exported ids' do
-        subject.exported[:users] = [1,2,3]
-        expect(depends).to eq("user_id in (1,2,3)")
+        expect(options_for).to eq("user_id in (1)")
       end
     end
-  end
 
-  describe '#has_dependents?' do
-    specify do
-      expect(subject.has_dependents?(:users)).to be_truthy
-      expect(subject.has_dependents?(:orders)).to be_truthy
-      expect(subject.has_dependents?(:order_items)).to be_falsy
-    end
-  end
-
-  describe '#fetch_order' do
-    let(:order) { subject.fetch_order }
-    it { expect(order).to eq [:users, :orders, :categories, :products, :order_items] }
   end
 
   describe '#fetch_data' do
 
     include_examples 'database setup'
+    let(:exported_ids) { Hash[subject.exported.map{|k,v|[k,v.map{|e|e['id']}]}] }
 
     it do
       expect { subject.fetch_data(:users) }
-        .to change { subject.exported }
-        .from({}).to({users: [1]})
+        .to change { (subject.exported[:users]||[]).map{|e|e['id'] } }
+        .to([1])
     end
 
     it 'does not export any order if users was not exported' do
       expect { subject.fetch_data(:orders) }
-        .to change { subject.exported }
-        .from({}).to({orders: []})
+        .to change { (subject.exported[:orders]||[]).map{|e|e['id'] } }
     end
 
     it 'works in sequence applying filters' do
