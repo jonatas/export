@@ -19,12 +19,18 @@ module Export
       end
     end
 
+    def fetch
+      fetch_order.map(&method(:fetch_data))
+    end
+
     def fetch_data table_name
       sql = "select * from #{table_name.to_s}"
       if options = @options[table_name]
-        key, value = options.first.to_a
-        condition = options_for(key,value)
-        sql << " where #{condition}" if condition
+        if options.respond_to? :first
+          key, value = options.first.to_a
+          condition = options_for(key,value)
+          sql << " where #{condition}" if condition
+        end
       end
 
       data = ActiveRecord::Base.connection.execute sql
@@ -66,6 +72,10 @@ module Export
 
     def has_dependents? table
       @options.values.grep(Hash).any?{|v| v[:depends_on] && v[:depends_on] == table}
+    end
+
+    def fetch_order
+      @options.keys.sort_by{|k|has_dependents?(k) ? 0 : 1}
     end
   end
 end
