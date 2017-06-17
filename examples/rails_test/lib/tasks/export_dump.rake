@@ -55,27 +55,21 @@ Export.table '#{table}'
         RUBY
       end
     end
-
   end
+
   desc "Export a dump with transformed data"
   task dump: :environment do
-
-    table = Export.table 'users' do
+     Export.table :users do
       replace :password, 'password'
       replace :email, -> (record) { strip_email(record.email) }
       replace :full_name, -> (record) { record.full_name.reverse }
     end
-    dump = Export::DumpTable.new(table)
-    Benchmark.bm do |bm|
-      bm.report("fetch records") { @users = User.all.to_a }
-      bm.report("dump process") { @result = dump.process(@users) }
-      bm.report("to_json") { @json = @result.to_json }
-      bm.report("write json file") { File.open('results.json', 'w+') {|f|f.puts @json } }
-    end
-    require 'pry'
-    binding.pry
 
-
+    Export.dump 'production' do
+      table :users, where: ["id < ?",[100]]
+      table :addresses, depends_on: -> { ["user_id in (?)", ids_for_exported(:users) ] }
+      on_fetch_data -> (t,d) { puts "#{t}: #{d.length} records" }
+    end.process
   end
 end
 

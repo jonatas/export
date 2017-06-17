@@ -6,6 +6,7 @@ module Export
       @schema = schema
       @options = {}
       @exported = {}
+      @on_fetch_data = [ Export.method(:transform_data) ]
       instance_exec(&block) if block_given?
     end
 
@@ -31,6 +32,10 @@ module Export
       end
     end
 
+    def on_fetch_data(block)
+      @on_fetch_data << block
+    end
+
     def fetch_data table_name
       @exported[table_name] ||=
         begin
@@ -41,8 +46,14 @@ module Export
               scope = scope.where(condition)
             end
           end
-          Export.transform_data(table_name, scope.to_a)
+          callback_fetched_data table_name, scope.to_a
         end
+    end
+
+    def callback_fetched_data table_name, data
+      @on_fetch_data.inject([]) do |transformed_data, callback|
+       callback.call(table_name, transformed_data.empty? ? data : transformed_data) || data
+      end
     end
 
     def options_for(key, value)
@@ -57,10 +68,14 @@ module Export
       end
     end
 
+
     def process
-      File.open(@schema, 'w+') do |file|
+      filename = @schema.tr(' ','_').downcase + '.json'
+      puts "Writing: #{filename}"
+      File.open(filename, 'w+') do |file|
         file.puts fetch
       end
+      puts "Finished. #{fetch.values.map(&:size).inject(:+)} records saved"
     end
 
     def sql_condition_for(value)
