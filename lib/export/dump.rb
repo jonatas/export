@@ -25,20 +25,23 @@ module Export
       end.inject(&:merge)
     end
 
+    def model(table_name)
+      Class.new(ActiveRecord::Base) do
+        self.table_name = table_name
+      end
+    end
+
     def fetch_data table_name
       @exported[table_name] ||=
         begin
-          sql = "select * from #{table_name.to_s}"
+          scope = model(table_name).all
           if options = @options[table_name]
             if options.respond_to? :first
-              key, value = options.first.to_a
-              condition = options_for(key,value)
-              puts condition if condition
-              sql << " where #{condition}" if condition
+              condition = options_for(*options.first.to_a)
+              scope = scope.where(condition)
             end
           end
-
-          ActiveRecord::Base.connection.execute sql
+          Export.transform_data(table_name, scope.to_a)
         end
     end
 
@@ -65,7 +68,7 @@ module Export
     end
 
     def ids_for_exported(table)
-      fetch_data(table).map{|e|e['id']}
+      fetch_data(table).map(&:id)
     end
   end
 end

@@ -36,6 +36,11 @@ module Export
     Export::Dump.new(schema_name, &block)
   end
 
+  def self.transform_data(table_name, data)
+    return data unless Export.replacements_for(table_name)
+    Export::TransformData.new(table_name).process(data)
+  end
+
   def self.replacements
     @replacements ||= {}
   end

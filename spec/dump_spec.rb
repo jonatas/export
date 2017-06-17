@@ -2,7 +2,7 @@ require 'spec_helper'
 
 describe Export::Dump do
   subject do
-    Export.dump 'production' do
+    Export.dump 'light' do
       table :users, where: ["id in (?)",[1]]
       all :categories, :products
       table :orders, depends_on: -> { ["user_id in (?)", ids_for_exported(:users) ] }
@@ -91,6 +91,18 @@ describe Export::Dump do
         expect(data[:users].map{|e|e['id']}).to eq([1])
         expect(data[:orders].map{|e|e['user_id']}.uniq).to eq([1])
       }.to change { subject.exported }
+    end
+
+    context 'transform data on fetch' do
+      before do
+        Export.table :users do
+          replace :email, 'user@example.com'
+        end
+        subject.fetch
+      end
+      it 'works in sequence applying filters' do
+        expect(subject.exported[:users].map{|e|e['email']}).to all(eq('user@example.com'))
+      end
     end
   end
 end
