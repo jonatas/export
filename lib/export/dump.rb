@@ -68,12 +68,11 @@ module Export
       end
     end
 
-
     def process
       filename = @schema.tr(' ','_').downcase + '.json'
       puts "Writing: #{filename}"
       File.open(filename, 'w+') do |file|
-        file.puts fetch
+        file.puts fetch.to_json
       end
       puts "Finished. #{fetch.values.map(&:size).inject(:+)} records saved"
     end
