@@ -4,47 +4,47 @@ module Export
 
     def initialize(schema, &block)
       @schema = schema
-      @options = {}
+      @scope = {}
       @exported = {}
       @on_fetch_data = [ Export.method(:transform_data) ]
       instance_exec(&block) if block_given?
     end
 
-    def table name, **options
-      @options[name] = options
+    def table name, &block
+      @scope[name] = block
     end
 
     def all *tables
-      tables.each do |table|
-        @options[table] = :all
+      tables.each do |table_name|
+        table(table_name) { all }
       end
     end
 
     def fetch
-      @options.keys.map do |table|
+      self.class.convenient_order.map do |table|
         {table => fetch_data(table)}
       end.inject(&:merge)
     end
 
-    def model(table_name)
-      Class.new(ActiveRecord::Base) do
-        self.table_name = table_name
-      end
-    end
-
-    def on_fetch_data(block)
+    def on_fetch_data(&block)
       @on_fetch_data << block
     end
 
     def fetch_data table_name
       @exported[table_name] ||=
         begin
-          scope = model(table_name).all
-          if options = @options[table_name]
-            if options.respond_to? :first
-              condition = options_for(*options.first.to_a)
-              scope = scope.where(condition)
-            end
+          conditions = @scope[table_name] 
+          scope = self.class.model(table_name)
+          if conditions
+            scope = scope.instance_exec(&conditions)
+          else
+            scope = scope.all
+          end
+          if dependency = self.class.dependencies[table_name]
+            foreign_key = "#{dependency.singularize}_id"
+            cond = {foreign_key => ids_for_exported(dependency) }
+            puts "#{table_name}.where #{cond}"
+            scope = scope.where cond
           end
           callback_fetched_data table_name, scope.to_a
         end
@@ -53,18 +53,6 @@ module Export
     def callback_fetched_data table_name, data
       @on_fetch_data.inject([]) do |transformed_data, callback|
        callback.call(table_name, transformed_data.empty? ? data : transformed_data) || data
-      end
-    end
-
-    def options_for(key, value)
-      if key == :where
-        sql_condition_for(value)
-      elsif key == :all
-        # no conditions
-      elsif key == :depends_on
-        sql_condition_for(instance_exec(&value))
-      else
-        fail "what #{key} does? The value is: #{value}"
       end
     end
 
@@ -83,6 +71,44 @@ module Export
 
     def ids_for_exported(table)
       fetch_data(table).map(&:id)
+    end
+
+    def self.dependencies
+      @dependencies ||=
+        begin
+          dependencies = {}
+          tables = interesting_tables
+          tables.each do |t|
+            foreign = "#{t.singularize}_id"
+            references = tables.select{|m|model(m).column_names.include?(foreign)}
+            unless references.empty?
+              references.each do |r|
+                dependencies[r] = t # references
+              end
+            end
+          end
+          dependencies
+        end
+    end
+
+    def self.independents
+      dependencies.values - dependencies.keys
+    end
+
+    def self.model(table_name)
+      Class.new(ActiveRecord::Base) do
+        self.table_name = table_name
+      end
+    end
+
+    def self.interesting_tables
+      @interesting_tables ||= 
+        ActiveRecord::Base.connection.tables -
+          %w[schema_migrations ar_internal_metadata]
+    end
+
+    def self.convenient_order
+      (independents | dependencies.keys)
     end
   end
 end
