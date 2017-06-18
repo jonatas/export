@@ -66,10 +66,30 @@ Export.table '#{table}'
     end
 
     Export.dump 'production' do
-      table :users, where: ["id < ?",[100]]
+      table :users, where: ["id in (?)",(30..50).to_a]
       table :addresses, depends_on: -> { ["user_id in (?)", ids_for_exported(:users) ] }
       on_fetch_data -> (t,d) { puts "#{t}: #{d.length} records" }
     end.process
+  end
+
+  desc "Load a dump"
+  task load: :environment do
+    file = ARGV.last
+
+    model = -> (table_name) {
+      Class.new(ActiveRecord::Base) do
+        self.table_name = table_name
+      end
+    }
+
+    insert= JSON.load(IO.read(file))
+
+    insert.each do |table, data|
+      t = Time.now
+      print "\ninserting #{data.length} records in #{table}..."
+      model[table].create(data)
+      print "#{Time.now - t} seconds"
+    end
   end
 end
 
