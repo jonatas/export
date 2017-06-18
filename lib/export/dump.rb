@@ -7,6 +7,7 @@ module Export
       @scope = {}
       @exported = {}
       @on_fetch_data = [ Export.method(:transform_data) ]
+      @ignore = []
       instance_exec(&block) if block_given?
     end
 
@@ -20,14 +21,22 @@ module Export
       end
     end
 
+    def ignore table
+      @ignore << table
+    end
+
     def fetch
-      self.class.convenient_order.map do |table|
+      (self.class.convenient_order - @ignore).map do |table|
         {table => fetch_data(table)}
       end.inject(&:merge)
     end
 
     def on_fetch_data(&block)
       @on_fetch_data << block
+    end
+
+    def on_fetch_error(&block)
+      @on_fetch_error = block
     end
 
     def fetch_data table_name
@@ -47,6 +56,8 @@ module Export
             scope = scope.where cond
           end
           callback_fetched_data table_name, scope.to_a
+        rescue
+          callback_failed_fetching_data table_name, $!, $@
         end
     end
 
@@ -54,6 +65,10 @@ module Export
       @on_fetch_data.inject([]) do |transformed_data, callback|
        callback.call(table_name, transformed_data.empty? ? data : transformed_data) || data
       end
+    end
+
+    def callback_failed_fetching_data( table_name, error, message)
+      @on_fetch_error.call(table_name, error, message)
     end
 
     def process
