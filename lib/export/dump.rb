@@ -27,7 +27,11 @@ module Export
 
     def fetch
       (self.class.convenient_order - @ignore).map do |table|
-        {table => fetch_data(table)}
+        print "fetching: #{table}"
+        t = Time.now
+        data = fetch_data(table) || []
+        print " ... #{data ? data.length : "no data"} in #{Time.now - t} seconds\n"
+        {table => data}
       end.inject(&:merge)
     end
 
@@ -50,10 +54,13 @@ module Export
             scope = scope.all
           end
           if dependency = self.class.dependencies[table_name]
-            foreign_key = "#{dependency.singularize}_id"
-            cond = {foreign_key => ids_for_exported(dependency) }
-            puts "#{table_name}.where #{cond}"
-            scope = scope.where cond
+            ids = ids_for_exported(dependency)
+            unless ids.empty?
+              scope = scope.where({ "#{dependency.singularize}_id" => ids })
+              puts "#{scope.count} #{table_name} from #{ids.length} #{dependency}"
+            end
+          else
+            puts "#{scope.count} #{table_name}"
           end
           callback_fetched_data table_name, scope.to_a
         rescue
@@ -84,8 +91,20 @@ module Export
       ActiveRecord::Base.__send__(:sanitize_sql, value)
     end
 
-    def ids_for_exported(table)
-      fetch_data(table).map(&:id)
+    def ids_for_exported(table_name)
+      return [] if @ignore.include?(table_name) # case a dependency look for this ignored table
+      array = @exported[table_name]
+      unless array
+        print " ( depends #{table_name}"
+        array = fetch_data(table_name)
+        print " )"
+        unless array
+          @ignore << table_name
+          puts "\n IGNORING #{table_name} since can't fetch records from it"
+          array = []
+        end
+      end
+      array.map(&:id)
     end
 
     def self.dependencies
