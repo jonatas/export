@@ -33,19 +33,28 @@ data:
 
 ```ruby
 Export.dump 'last 3 monts user' do
-  table :users, where: ["created_at > ?",  3.months.ago]
+  table :users, -> { where: ["created_at > ?",  3.months.ago] }
 
   all :categories, :products
 
-  table :orders, depends_on: :users
-  table :order_items, depends_on: :orders
+  ignore :auditable_items
+
+  on_fetch_data {|table, data| puts "Exported #{data.size} from #{table}" }
+
+  on_fetch_error do |table, error, full_trace|
+    puts "Ops! something goes wrong importing #{table}", error, full_trace
+  end
 end
 ```
 
-- `all` include all records from n `*tables` obviously.
-- `table` alloy you to specify the following options:
- - `where: <condition>` with a SQL condition
- - `depends_on: <table>` look for export of `<table>` and apply a scope for it
+Imagine that you also have a table `orders` that depends on `users`. It will
+automatically load only the orders related to the current user.
+
+The same will happen with `order_items` that depends of what `orders` are being
+exported.
+
+- `all` include all records from n `*tables`
+- `table receives a name and allow you specify a scope directly in the model class.
 
 
 ## How to test
