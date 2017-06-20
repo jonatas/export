@@ -114,7 +114,7 @@ module Export
           tables = interesting_tables
           tables.each do |t|
             foreign = "#{t.singularize}_id"
-            references = tables.select{|m|model(m).column_names.include?(foreign)}
+            references = tables.select{|m| t!=m && model(m).column_names.include?(foreign)}
             unless references.empty?
               references.each do |r|
                 dependencies[r] = t # references
