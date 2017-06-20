@@ -16,6 +16,7 @@ module Export
 
     def apply_replacements!(record)
       Export.replacements_for(@table).each do |field, modifiers|
+        next if record.public_send(field).nil?
         modifiers.each do |modifier|
           value = modifier && value_from(modifier, record)
           record.public_send("#{field}=", value)
