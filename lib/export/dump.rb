@@ -130,9 +130,7 @@ module Export
     end
 
     def self.model(table_name)
-      Class.new(ActiveRecord::Base) do
-        self.table_name = table_name
-      end
+      Class.new(ActiveRecord::Base) { self.table_name = table_name }
     end
 
     def self.interesting_tables
