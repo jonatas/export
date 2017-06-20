@@ -21,8 +21,8 @@ module Export
       end
     end
 
-    def ignore table
-      @ignore << table
+    def ignore *table
+      @ignore += [*table]
     end
 
     def fetch
