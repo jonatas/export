@@ -130,7 +130,7 @@ module Export
       @polymorphic_dependencies ||=
         begin
           interesting_tables.map do |table|
-            clazz = table.classify.safe_constantize
+            clazz = model(table)
             next unless clazz
             associations =
               clazz.reflections.select do |name, reflection|
@@ -138,7 +138,11 @@ module Export
               end
             if associations.any?
               names = associations.values.map(&:name)
-              polymorphic_map = names.map{|name| {name => polymorphic_associates_with(table, name) } }.flatten
+              polymorphic_map = names.map do |name|
+                assocs = polymorphic_associates_with(table, name)
+                next unless assocs.any?
+                {name => assocs }
+              end.compact.flatten
               { table => polymorphic_map.inject(&:merge!) }
             end
           end.compact.inject(:merge!)
@@ -152,7 +156,7 @@ module Export
           tables = interesting_tables
           tables.each do |t|
             foreign = "#{t.singularize}_id"
-            references = tables.select{|m| t!=m && model(m).column_names.include?(foreign)}
+            references = tables.select{|m| t!=m && (clazz = model(m)) && clazz.column_names.include?(foreign)}
             unless references.empty?
               references.each do |r|
                 dependencies[r] = t # references
@@ -164,7 +168,7 @@ module Export
     end
 
     def self.independents
-      dependencies.values - dependencies.keys
+      (dependencies.values - dependencies.keys).uniq
     end
 
     def self.model(table_name)
