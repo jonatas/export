@@ -168,8 +168,9 @@ module Export
     end
 
     def self.model(table_name)
-      table_name.to_s.classify.safe_constantize ||
-        Class.new(ActiveRecord::Base) { self.table_name = table_name }
+      const = table_name.to_s.classify.safe_constantize
+      return const if const && const < ActiveRecord::Base
+      Class.new(ActiveRecord::Base) { self.table_name = table_name }
     end
 
     def self.interesting_tables
