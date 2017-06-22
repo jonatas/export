@@ -59,6 +59,12 @@ module Export
               scope = scope.where({ "#{dependency.singularize}_id" => ids })
               puts "#{scope.count} #{table_name} from #{ids.length} #{dependency}"
             end
+          end
+          if dependencies = self.class.polymorphic_dependencies[table_name]
+            dependencies.each do |polymorphic_association, tables|
+              scope = scope.where(polymorphic_association => tables.flat_map{|t|fetch_data(t)})
+              puts "#{scope.count} #{table_name} from #{polymorphic_association} => #{tables.map{|t| "#{fetch_data(t)&.length} #{t}"}}"
+            end
           else
             puts "#{scope.count} #{table_name}"
           end
@@ -75,7 +81,11 @@ module Export
     end
 
     def callback_failed_fetching_data( table_name, error, message)
-      @on_fetch_error.call(table_name, error, message)
+      if @on_fetch_error
+        @on_fetch_error.call(table_name, error, message)
+      else
+        fail "#{table_name} failed downloading with: #{error} \n #{message.join("\n")}"
+      end
     end
 
     def process
@@ -107,6 +117,34 @@ module Export
       array.map(&:id)
     end
 
+    def self.polymorphic_associates_with(original_table, polymorphic_model)
+      (interesting_tables - [original_table]).select do |table|
+        clazz = model(table)
+        next unless clazz
+        reflection = clazz.reflections[original_table]
+        reflection && reflection.options[:as] == polymorphic_model
+      end
+    end
+
+    def self.polymorphic_dependencies
+      @polymorphic_dependencies ||=
+        begin
+          interesting_tables.map do |table|
+            clazz = table.classify.safe_constantize
+            next unless clazz
+            associations =
+              clazz.reflections.select do |name, reflection|
+                reflection.options && reflection.options[:polymorphic] == true
+              end
+            if associations.any?
+              names = associations.values.map(&:name)
+              polymorphic_map = names.map{|name| {name => polymorphic_associates_with(table, name) } }.flatten
+              { table => polymorphic_map.inject(&:merge!) }
+            end
+          end.compact.inject(:merge!)
+        end
+    end
+
     def self.dependencies
       @dependencies ||=
         begin
@@ -130,7 +168,7 @@ module Export
     end
 
     def self.model(table_name)
-      Class.new(ActiveRecord::Base) { self.table_name = table_name }
+      table_name.to_s.classify.safe_constantize
     end
 
     def self.interesting_tables
@@ -140,7 +178,7 @@ module Export
     end
 
     def self.convenient_order
-      (independents | dependencies.keys)
+      (independents | dependencies.keys | polymorphic_dependencies.keys)
     end
   end
 end

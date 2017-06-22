@@ -1,8 +1,6 @@
 require 'spec_helper'
 
 describe Export::TransformData do
-  User = Struct.new(:full_name, :email, :password, :created_at, :updated_at)
-  Category = Struct.new(:name)
 
   before do
     Export.table 'users' do
@@ -19,14 +17,16 @@ describe Export::TransformData do
   end
 
   let(:users) do
+  user = Struct.new(:full_name, :email, :password, :created_at, :updated_at)
     [
-      User.new('Jônatas Paganini', 'jonatasdp@gmail.com', 'myPreciousSecret', Time.now, Time.now + 3600 * 24),
-      User.new('Leandro Heuert', 'leandroh@gmail.com', 'LeandroLOL', Time.now, Time.now + 3600 * 24 * 2)
+      user.new('Jônatas Paganini', 'jonatasdp@gmail.com', 'myPreciousSecret', Time.now, Time.now + 3600 * 24),
+      user.new('Leandro Heuert', 'leandroh@gmail.com', 'LeandroLOL', Time.now, Time.now + 3600 * 24 * 2)
     ]
   end
 
   let(:categories) do
-    [ Category.new("A"), Category.new("B") ]
+    category = Struct.new(:name)
+    [ category.new("A"), category.new("B") ]
   end
 
   let(:dump) { described_class.new('users') }

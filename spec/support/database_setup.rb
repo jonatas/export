@@ -30,21 +30,17 @@ RSpec.shared_examples "database setup" do |users: 2, orders: 5, products: 10, ca
         t.timestamps
       end
 
+      create_table :comments do |t|
+        t.string :description
+        t.references :commentable, polymorphic: true, index: true
+        t.timestamps
+      end
     end
 
     def down
       drop_table :users
       drop_table :orders
     end
-
-    def insert data, sql
-      data.each do |values|
-        value = [sql, *values]
-        cmd = ActiveRecord::Base.__send__(:sanitize_sql, value)
-        execute cmd
-      end
-    end
-
   end
 
   before do
@@ -56,37 +52,61 @@ RSpec.shared_examples "database setup" do |users: 2, orders: 5, products: 10, ca
       end
     end
 
-    user = model[:users]
-    category = model[:categories]
-    product = model[:products]
-    order = model[:orders]
-    order_items = model[:order_items]
+    polymorphic = proc do |table_name, polymorphic_association|
+      Class.new(ActiveRecord::Base) do
+        self.table_name = table_name
+        belongs_to polymorphic_association, polymorphic: true
+        scope :random, -> { offset(rand(count)).first }
+      end
+    end
+
+    commentable_model = proc do |table_name|
+      Class.new(ActiveRecord::Base) do
+        self.table_name = table_name
+        scope :random, -> { offset(rand(count)).first }
+        has_many :comments, as: :commentable
+      end
+    end
+
+    User = model[:users]
+    Category = model[:categories]
+    Product = commentable_model[:products]
+    Order = model[:orders]
+    OrderItem = commentable_model[:order_items]
+    Comment = polymorphic[:comments, :commentable]
 
     users.times do
-      user.create email: FFaker::Internet.email,
+      User.create email: FFaker::Internet.email,
         name: FFaker::Name.name
     end
 
     categories.times do
-      category.create label: FFaker::Product.model,
+      Category.create label: FFaker::Product.model,
         description: FFaker::Lorem.paragraph
     end
 
     products.times do
-      product.create name: FFaker::Product.name,
-        category_id: category.random.id
+      Product.create name: FFaker::Product.name,
+        category_id: Category.random.id
+    end
+
+    (products / 2).times do
+      Comment.create description: FFaker::Lorem.paragraph, commentable: Product.random
     end
 
     orders.times do
-      order.create user_id: user.random.id
+      Order.create user_id: User.random.id
     end
 
     orders_items.times do
-      order_items.create order_id: order.random.id,
-        product_id: product.random.id,
+      OrderItem.create order_id: Order.random.id,
+        product_id: Product.random.id,
         quantity: rand(3),
         price: rand(10) + rand(10).to_f / 10
+    end
 
+    (orders_items / 3).times do
+      Comment.create description: FFaker::Lorem.paragraph, commentable: OrderItem.random
     end
 
   end

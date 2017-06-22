@@ -21,25 +21,30 @@ describe Export::Dump do
 
       expect(described_class.independents).to eq(%w[users categories])
 
+      expect(described_class.polymorphic_dependencies)
+        .to eq({"comments"=> { commentable: ["products", "order_items"]}})
+
       expect(described_class.convenient_order).to eq(
-        %w[users categories orders order_items products])
+        %w[users categories orders order_items products comments])
     end
   end
 
   describe '#fetch_data' do
 
     include_examples 'database setup'
-    let(:exported_ids) { Hash[subject.exported.map{|k,v|[k,v.map{|e|e['id']}]}] }
+    def exported_ids
+      Hash[subject.exported.map{|k,v|[k,v.map{|e|e['id']}]}]
+    end
 
     it do
       expect { subject.fetch_data('users') }
-        .to change { (subject.exported['users']||[]).map{|e|e['id'] } }
+        .to change { exported_ids['users'] }
         .to([1])
     end
 
     it 'does not export any order if users was not exported' do
       expect { subject.fetch_data(:orders) }
-        .to change { (subject.exported[:orders]||[]).map{|e|e['id'] } }
+        .to change { exported_ids[:orders] }
     end
 
     it 'works in sequence applying filters' do
@@ -61,10 +66,17 @@ describe Export::Dump do
           .and have_key('products')
           .and have_key('orders')
           .and have_key('order_items')
+          .and have_key('comments')
 
 
         expect(data['users'].map{|e|e['id']}).to eq([1])
         expect(data['orders'].map{|e|e['user_id']}.uniq).to eq([1])
+
+        commentable = data['comments'].map(&:commentable)
+
+        expect(commentable.grep(Product) - data['products']).to be_empty
+        expect(commentable.grep(OrderItem) - data['order_items']).to be_empty
+
       }.to change { subject.exported }
     end
 
