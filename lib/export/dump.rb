@@ -131,7 +131,7 @@ module Export
     def self.polymorphic_dependencies
       @polymorphic_dependencies ||=
         begin
-          interesting_tables.map do |table|
+          interesting_tables.inject({}) do |result, table|
             clazz = model(table)
             next unless clazz
             associations =
@@ -140,14 +140,15 @@ module Export
               end
             if associations.any?
               names = associations.values.map(&:name)
-              polymorphic_map = names.map do |name|
+              polymorphic_map = names.inject({}) do |acc, name|
                 assocs = polymorphic_associates_with(table, name)
-                next unless assocs.any?
-                {name => assocs }
-              end.compact.flatten
-              { table => polymorphic_map.inject(&:merge!) }
+                acc[name] = assocs if assocs.any?
+                acc
+              end
+              result[table] = polymorphic_map 
             end
-          end.compact.inject(:merge!)
+            result
+          end
         end
     end
 
