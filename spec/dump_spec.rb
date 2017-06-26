@@ -14,9 +14,9 @@ describe Export::Dump do
 
     it 'maps dependency between relationships' do
       expect(described_class.dependencies).to eq({
-        "orders"=>"users",
-        "order_items"=>"products",
-        "products"=>"categories"
+        "orders"=>["users"],
+        "order_items"=>["orders", "products"],
+        "products"=>["categories"]
       })
 
       expect(described_class.independents).to eq(%w[users categories])
@@ -25,7 +25,7 @@ describe Export::Dump do
         .to eq({"comments"=> { commentable: ["products", "order_items"]}})
 
       expect(described_class.convenient_order).to eq(
-        %w[users categories orders order_items products comments])
+        %w[users categories orders products order_items comments])
     end
   end
 

@@ -45,10 +45,12 @@ RSpec.shared_examples "database setup" do |users: 2, orders: 5, products: 10, ca
 
   before do
     CreateSchema.new.up
-    model = proc do |table_name|
+
+    model = proc do |table_name, &block|
       Class.new(ActiveRecord::Base) do
         self.table_name = table_name
         scope :random, -> { offset(rand(count)).first }
+        instance_eval(&block) if block
       end
     end
 
@@ -60,19 +62,20 @@ RSpec.shared_examples "database setup" do |users: 2, orders: 5, products: 10, ca
       end
     end
 
-    commentable_model = proc do |table_name|
+    commentable_model = proc do |table_name, &block|
       Class.new(ActiveRecord::Base) do
         self.table_name = table_name
         scope :random, -> { offset(rand(count)).first }
         has_many :comments, as: :commentable
+        instance_eval(&block) if block
       end
     end
 
     User = model[:users]
     Category = model[:categories]
-    Product = commentable_model[:products]
-    Order = model[:orders]
-    OrderItem = commentable_model[:order_items]
+    Product = commentable_model.call(:products) { belongs_to :category }
+    Order = model.call(:orders) { belongs_to :user }
+    OrderItem = commentable_model.call(:order_items) { belongs_to :order; belongs_to :product }
     Comment = polymorphic[:comments, :commentable]
 
     users.times do

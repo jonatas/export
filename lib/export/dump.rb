@@ -53,11 +53,13 @@ module Export
           else
             scope = scope.all
           end
-          if dependency = self.class.dependencies[table_name]
-            ids = ids_for_exported(dependency)
-            unless ids.empty?
-              scope = scope.where({ "#{dependency.singularize}_id" => ids })
-              puts "#{scope.count} #{table_name} from #{ids.length} #{dependency}"
+          if dependencies = self.class.dependencies[table_name]
+            dependencies.each do |dependency|
+              ids = ids_for_exported(dependency)
+              unless ids.empty?
+                scope = scope.where({ "#{dependency.singularize}_id" => ids })
+                puts "#{scope.count} #{table_name} from #{ids.length} #{dependency}"
+              end
             end
           end
           if dependencies = self.class.polymorphic_dependencies[table_name]
@@ -151,24 +153,15 @@ module Export
 
     def self.dependencies
       @dependencies ||=
-        begin
-          dependencies = {}
-          tables = interesting_tables
-          tables.each do |t|
-            foreign = "#{t.singularize}_id"
-            references = tables.select{|m| t!=m && (clazz = model(m)) && clazz.column_names.include?(foreign)}
-            unless references.empty?
-              references.each do |r|
-                dependencies[r] = t # references
-              end
-            end
-          end
-          dependencies
+        interesting_tables.inject({}) do |acc, t|
+          references = t.classify.constantize.reflections.select { |_, v| v.macro == :belongs_to && !v.options.key?(:polymorphic) }
+          acc[t] = references.values.map(&:plural_name) unless references.empty?
+          acc
         end
     end
 
     def self.independents
-      (dependencies.values - dependencies.keys).uniq
+      (dependencies.values.flatten - dependencies.keys).uniq
     end
 
     def self.model(table_name)
