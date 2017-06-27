@@ -6,10 +6,9 @@ module Export
     end
 
     def process(data)
-      new_data = data.map do |record|
+      data.map do |record|
         apply_replacements!(record)
       end
-      new_data
     end
 
     private

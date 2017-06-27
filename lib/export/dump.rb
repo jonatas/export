@@ -1,14 +1,41 @@
+require 'export/broadcast'
+
 module Export
   class Dump
-    attr_reader :options, :exported
+    attr_reader :options, :exported, :broadcast
 
     def initialize(schema, &block)
       @schema = schema
       @scope = {}
       @exported = {}
-      @on_fetch_data = [ Export.method(:transform_data) ]
+      @exporting = {}
       @ignore = []
+      @queue = Queue.new
+      @broadcast = setup_broadcast
       instance_exec(&block) if block_given?
+    end
+
+    def setup_broadcast
+      Broadcast.new do
+        on "fetch" do |table, data|
+          puts "Fetched: #{table} with #{data&.length} records"
+          data = Export.transform_data(table, data)
+          publish "transform", table, data
+        end
+
+        on "transform" do |table, data|
+          t = Time.now
+          print "\n#{Time.now} #{table} - #{data.size}"
+          filename = "tmp/#{table}.json"
+          File.open(filename,"w+"){|f|f.puts data.to_json}
+          print " finished #{filename} in #{Time.now - t} seconds. #{File.size(filename)}"
+          publish "stored", filename
+        end
+
+        on "stored" do |filename|
+          puts "add to zip: #{filename}"
+        end
+      end
     end
 
     def table name, &block
@@ -26,17 +53,19 @@ module Export
     end
 
     def fetch
-      (self.class.convenient_order - @ignore).map do |table|
-        print "fetching: #{table}"
+      consumer = @broadcast.start_consumer
+      missing.each do |table|
+        print "Fetching: #{table}"
         t = Time.now
-        data = fetch_data(table) || []
-        print " ... #{data ? data.length : "no data"} in #{Time.now - t} seconds\n"
-        {table => data}
-      end.inject(&:merge)
+        data = fetch_data(table)
+        print " ... #{data&.length || 0} in #{Time.now - t} seconds\n"
+      end
+      @broadcast.resume_work
+      consumer.join
     end
 
-    def on_fetch_data(&block)
-      @on_fetch_data << block
+    def missing
+      self.class.convenient_order - @ignore - @exported.keys
     end
 
     def on_fetch_error(&block)
@@ -47,12 +76,15 @@ module Export
       @exported[table_name] ||=
         begin
           conditions = @scope[table_name] 
-          scope = self.class.model(table_name)
+          scope = self.class.model(table_name).all
+
           if conditions
+            file, line_number = conditions.source_location
+            code = File.readlines(file)[line_number-1]
+            print " with conditions: #{code}"
             scope = scope.instance_exec(&conditions)
-          else
-            scope = scope.all
           end
+
           if dependencies = self.class.dependencies[table_name]
             dependencies.each do |dependency|
               ids = ids_for_exported(dependency)
@@ -62,23 +94,31 @@ module Export
               end
             end
           end
+
           if dependencies = self.class.polymorphic_dependencies[table_name]
             dependencies.each do |polymorphic_association, tables|
-              scope = scope.where(polymorphic_association => tables.flat_map{|t|fetch_data(t)})
-              puts "#{scope.count} #{table_name} from #{polymorphic_association} => #{tables.map{|t| "#{fetch_data(t)&.length} #{t}"}}"
+              records = tables.inject({}){|h,t|h[t] = fetch_data(t) ; h}
+              scope = scope.where(polymorphic_association => records.values.flatten)
+              ids_from_each_table = records.map {|t,d| "#{d.size} #{t}" }.join(', ')
+              puts " depending #{scope.count} #{table_name} from #{polymorphic_association} => #{ids_from_each_table}"
             end
           else
-            puts "#{scope.count} #{table_name}"
+            print "#{scope.count} #{table_name}"
           end
-          callback_fetched_data table_name, scope.to_a
+
+          data = scope.to_a
+
+          @broadcast.publish "fetch", table_name, data
+
+          data
         rescue
           callback_failed_fetching_data table_name, $!, $@
         end
     end
 
     def callback_fetched_data table_name, data
-      @on_fetch_data.inject([]) do |transformed_data, callback|
-       callback.call(table_name, transformed_data.empty? ? data : transformed_data) || data
+      @on_fetch_data.inject(data) do |transformed_data, callback|
+        instance_exec [table_name, transformed_data], callback #.call(table_name, transformed_data)
       end
     end
 
@@ -145,7 +185,7 @@ module Export
                 acc[name] = assocs if assocs.any?
                 acc
               end
-              result[table] = polymorphic_map 
+              result[table] = polymorphic_map
             end
             result
           end

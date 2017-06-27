@@ -5,7 +5,6 @@ describe Export::Dump do
     Export.dump 'light' do
       table('users') { where(id: User.order(:id).first.id) }
       all 'categories', 'products', 'orders', 'order_items'
-      on_fetch_data {|t,d| puts "#{t} #{d.map(&:id)}" }
     end
   end
 
@@ -62,7 +61,8 @@ describe Export::Dump do
 
     it 'works in sequence applying filters' do
       expect {
-        data = subject.fetch
+        subject.fetch
+        data = subject.exported
         expect(data).to have_key('users')
           .and have_key('categories')
           .and have_key('products')
@@ -88,9 +88,10 @@ describe Export::Dump do
           replace :email, 'user@example.com'
         end
         subject.fetch
+        subject.broadcast.resume_work
       end
       it 'works in sequence applying filters' do
-        expect(subject.exported['users'].map{|e|e['email']}).to all(eq('user@example.com'))
+        expect(subject.exported['users'].map(&:email)).to all(eq('user@example.com'))
       end
     end
   end
