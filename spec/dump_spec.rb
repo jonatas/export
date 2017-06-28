@@ -3,20 +3,22 @@ require 'spec_helper'
 describe Export::Dump do
   subject do
     Export.dump 'light' do
-      table('users') { where(id: 1) }
+      table('users') { where(id: User.order(:id).first.id) }
       all 'categories', 'products', 'orders', 'order_items'
       on_fetch_data {|t,d| puts "#{t} #{d.map(&:id)}" }
     end
   end
+
+  let(:first_user_id) { User.first.id }
 
   context '.independents' do
     include_examples 'database setup'
 
     it 'maps dependency between relationships' do
       expect(described_class.dependencies).to eq({
-        "orders"=>"users",
-        "order_items"=>"products",
-        "products"=>"categories"
+        "orders"=>["users"],
+        "order_items"=>["orders", "products"],
+        "products"=>["categories"]
       })
 
       expect(described_class.independents).to eq(%w[users categories])
@@ -25,7 +27,7 @@ describe Export::Dump do
         .to eq({"comments"=> { commentable: ["products", "order_items"]}})
 
       expect(described_class.convenient_order).to eq(
-        %w[users categories orders order_items products comments])
+        %w[users categories orders products order_items comments])
     end
   end
 
@@ -39,7 +41,7 @@ describe Export::Dump do
     it do
       expect { subject.fetch_data('users') }
         .to change { exported_ids['users'] }
-        .to([1])
+        .to([first_user_id])
     end
 
     it 'does not export any order if users was not exported' do
@@ -68,9 +70,9 @@ describe Export::Dump do
           .and have_key('order_items')
           .and have_key('comments')
 
-
-        expect(data['users'].map{|e|e['id']}).to eq([1])
-        expect(data['orders'].map{|e|e['user_id']}.uniq).to eq([1])
+        user_ids = [User.order(:id).first.id]
+        expect(data['users'].map(&:id)).to eq(user_ids)
+        expect(data['orders'].map(&:user_id).uniq).to eq(user_ids)
 
         commentable = data['comments'].map(&:commentable)
 
