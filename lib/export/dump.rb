@@ -53,15 +53,12 @@ module Export
     end
 
     def fetch
-      consumer = @broadcast.start_consumer
       missing.each do |table|
         print "Fetching: #{table}"
         t = Time.now
         data = fetch_data(table)
         print " ... #{data&.length || 0} in #{Time.now - t} seconds\n"
       end
-      @broadcast.resume_work
-      consumer.join
     end
 
     def missing
@@ -195,8 +192,11 @@ module Export
     def self.dependencies
       @dependencies ||=
         interesting_tables.inject({}) do |acc, t|
-          references = t.classify.constantize.reflections.select { |_, v| v.macro == :belongs_to && !v.options.key?(:polymorphic) }
-          acc[t] = references.values.map(&:plural_name) unless references.empty?
+          model = model(t)
+          if model
+            references = model.reflections.select { |_, v| v.macro == :belongs_to && !v.options.key?(:polymorphic) }
+            acc[t] = references.values.map(&:plural_name) unless references.empty?
+          end
           acc
         end
     end

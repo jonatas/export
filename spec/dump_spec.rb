@@ -88,7 +88,6 @@ describe Export::Dump do
           replace :email, 'user@example.com'
         end
         subject.fetch
-        subject.broadcast.resume_work
       end
       it 'works in sequence applying filters' do
         expect(subject.exported['users'].map(&:email)).to all(eq('user@example.com'))
