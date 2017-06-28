@@ -97,7 +97,9 @@ RSpec.shared_examples "database setup" do |users: 2, orders: 5, products: 10, ca
       Comment.create description: FFaker::Lorem.paragraph, commentable: Product.random
     end
 
-    orders.times do
+    Order.create user_id: User.order(:id).first.id
+
+    (orders - 1).times do
       Order.create user_id: User.random.id
     end
 
