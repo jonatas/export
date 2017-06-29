@@ -1,13 +1,14 @@
 module Export
-  class Table
+  class Transform
 
-    attr_accessor :name
+    attr_accessor :model
     attr_reader :replacements
 
-    def initialize(name:)
-      self.name = name
+    def initialize(model, &block)
+      self.model = model
       @replacements = {}
-      Export.replacements[name] = self
+      Export.replacements[model.to_s] = self
+      instance_exec(&block)
     end
 
     def replace(info, with_value)

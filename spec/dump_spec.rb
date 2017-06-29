@@ -2,95 +2,92 @@ require 'spec_helper'
 
 describe Export::Dump do
   subject do
+    Export.transform User do
+      replace :email, 'user@example.com'
+    end
+
     Export.dump 'light' do
-      table('users') { where(id: User.order(:id).first.id) }
-      all 'categories', 'products', 'orders', 'order_items'
+      model(User) { where(id: User.order(:id).first.id) }
+      on_fetch_error {|clazz,e,m| require 'pry'; binding.pry  }
     end
   end
+
+  include_examples 'database setup'
 
   let(:first_user_id) { User.first.id }
 
   context '.independents' do
-    include_examples 'database setup'
-
     it 'maps dependency between relationships' do
-      expect(described_class.dependencies).to eq({
-        "orders"=>["users"],
-        "order_items"=>["orders", "products"],
-        "products"=>["categories"]
-      })
+      expect(described_class.dependencies_of(Order)).to have_key("user")
+      expect(described_class.dependencies_of(OrderItem)).to have_key("order").and have_key("product")
+      expect(described_class.dependencies_of(Product)).to have_key("category")
 
-      expect(described_class.independents).to eq(%w[users categories])
+      expect(described_class.dependencies_of(User)).to be_empty
+      expect(described_class.dependencies_of(Category)).to be_empty
+
+      expect(described_class.independents).to eq([User, Category])
 
       expect(described_class.polymorphic_dependencies)
-        .to eq({"comments"=> { commentable: ["products", "order_items"]}})
+        .to eq({Comment => { commentable: [Product, OrderItem]}})
 
       expect(described_class.convenient_order).to eq(
-        %w[users categories orders products order_items comments])
+        [User, Category, Product, Order, OrderItem, Comment])
     end
   end
 
   describe '#fetch_data' do
-
-    include_examples 'database setup'
     def exported_ids
       Hash[subject.exported.map{|k,v|[k,v.map{|e|e['id']}]}]
     end
 
     it do
-      expect { subject.fetch_data('users') }
-        .to change { exported_ids['users'] }
+      expect { subject.fetch_data(User) }
+        .to change { exported_ids['User'] }
         .to([first_user_id])
     end
 
     it 'does not export any order if users was not exported' do
-      expect { subject.fetch_data(:orders) }
-        .to change { exported_ids[:orders] }
+      expect { subject.fetch_data(Order) }
+        .to change { exported_ids['Order'] }
     end
 
     it 'works in sequence applying filters' do
       expect do
-        subject.fetch_data('users')
-        subject.fetch_data('orders')
+        subject.fetch_data(User)
+        subject.fetch_data(Order)
       end.to change { subject.exported }
     end
   end
 
   describe '#fetch' do
-    include_examples 'database setup'
+
+    before { subject.fetch }
 
     it 'works in sequence applying filters' do
-      expect {
-        subject.fetch
-        data = subject.exported
-        expect(data).to have_key('users')
-          .and have_key('categories')
-          .and have_key('products')
-          .and have_key('orders')
-          .and have_key('order_items')
-          .and have_key('comments')
+      data = subject.exported
+      expect(data).to have_key('User')
+        .and have_key('Category')
+        .and have_key('Product')
+        .and have_key('Order')
+        .and have_key('OrderItem')
+        .and have_key('Comment')
 
-        user_ids = [User.order(:id).first.id]
-        expect(data['users'].map(&:id)).to eq(user_ids)
-        expect(data['orders'].map(&:user_id).uniq).to eq(user_ids)
+      user_ids = [User.order(:id).first.id]
+      expect(data['User'].map(&:id)).to eq(user_ids)
+      expect(data['Order'].map(&:user_id).uniq).to eq(user_ids)
 
-        commentable = data['comments'].map(&:commentable)
+      commentable = data['Comment'].map(&:commentable)
+      expect(commentable.grep(Product).map(&:id) - data['Product'].map(&:id)).to be_empty
+      expect(commentable.grep(OrderItem).map(&:id) - data['OrderItem'].map(&:id)).to be_empty
 
-        expect(commentable.grep(Product) - data['products']).to be_empty
-        expect(commentable.grep(OrderItem) - data['order_items']).to be_empty
-
-      }.to change { subject.exported }
     end
 
     context 'transform data on fetch' do
       before do
-        Export.table 'users' do
-          replace :email, 'user@example.com'
-        end
         subject.fetch
       end
       it 'works in sequence applying filters' do
-        expect(subject.exported['users'].map(&:email)).to all(eq('user@example.com'))
+        expect(subject.exported['User'].map(&:email)).to all(eq('user@example.com'))
       end
     end
   end

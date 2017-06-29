@@ -1,8 +1,9 @@
 module Export
   class TransformData
     attr_reader :table
-    def initialize(table)
-      @table = table
+    def initialize(model)
+      @replacements = Export.replacements_for(model)
+      raise "No replacements for #{model}" if @replacements.nil?
     end
 
     def process(data)
@@ -14,7 +15,7 @@ module Export
     private
 
     def apply_replacements!(record)
-      Export.replacements_for(@table).each do |field, modifiers|
+      @replacements.each do |field, modifiers|
         next if record.public_send(field).nil?
         modifiers.each do |modifier|
           value = modifier && value_from(modifier, record)
