@@ -19,7 +19,12 @@ module Export
       Broadcast.new do
         on "fetch" do |model, data|
           puts "Fetched: #{model} with #{data&.length} records"
-          data = Export.transform_data(model, data)
+          if Export.replacements_for(model)
+            print " > Transforming..."
+            t = Time.now
+            data = Export.transform_data(model, data)
+            print " done in #{Time.now - t} seconds"
+          end
           publish "transform", model, data
         end
 
@@ -74,8 +79,6 @@ module Export
             code = File.readlines(file)[line_number-1]
             print ">> #{clazz}: with conditions  #{code}"
             scope = scope.instance_exec(&conditions)
-          else
-            print ">> #{clazz} :: #{clazz.class}: without conditions #{@scope.keys} <<<<<<<<<<< "
           end
 
           if dependencies = self.class.dependencies[clazz]

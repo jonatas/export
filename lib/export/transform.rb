@@ -1,4 +1,13 @@
 module Export
+  # Transform model attributes declaring replacements
+  #
+  # example:
+  # Export.transform User do
+  #   replace :full_name, -> { FFaker::Name.name }
+  #   replace :password, 'password'
+  #   replace :email, -> (r) { "#{r.email.split('@').first}@example.com" }
+  #   ignore :created_at, :updated_at
+  # end
   class Transform
 
     attr_accessor :model
