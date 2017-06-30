@@ -37,8 +37,6 @@ describe Export::Broadcast do
     specify do
       expect do
         subject.publish 'fetch', [1,2,3,4,5,6]
-        sleep 0.01
-
       end.to output(<<~OUTPUT).to_stdout
         fetch: [1, 2, 3, 4, 5, 6]
         map: [2, 3, 4, 5, 6, 7]
