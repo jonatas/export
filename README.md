@@ -6,7 +6,7 @@ exported.
 Example:
 
 ```ruby
-users_table = Export.table 'users' do
+Export.transform User do
   replace :full_name, -> { FFaker::Name.name }
   replace :password, 'password'
   replace :email, -> (r) { "#{r.email.split('@').first}@example.com" }
@@ -17,7 +17,7 @@ end
 And then is possible to apply your rules with the tables:
 
 ```ruby
-dump = Export::TransformData.new('users')
+dump = Export::TransformData.new(User)
 result = dump.process(User.all)
 ```
 
@@ -33,11 +33,9 @@ data:
 
 ```ruby
 Export.dump 'last 3 monts user' do
-  table :users, -> { where: ["created_at > ?",  3.months.ago] }
+  model User, -> { where(["created_at > ?",  3.months.ago]) }
 
-  all :categories, :products
-
-  ignore :auditable_items
+  ignore AuditableItem
 
   on_fetch_data {|table, data| puts "Exported #{data.size} from #{table}" }
 
