@@ -27,7 +27,11 @@ module Export
         Thread.new(event, channel) do |evt,ch|
           while true
             if data = ~ch
-              @listener[evt].call(*data)
+              begin
+                @listener[evt].call(*data)
+              rescue
+                puts "Ops! Error consuming #{evt} with #{data}. #{$!}", $@
+              end
             end
           end
         end
