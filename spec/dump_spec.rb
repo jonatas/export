@@ -16,25 +16,6 @@ describe Export::Dump do
 
   let(:first_user_id) { User.first.id }
 
-  context '.independents' do
-    it 'maps dependency between relationships' do
-      expect(described_class.dependencies_of(Order)).to have_key("user")
-      expect(described_class.dependencies_of(OrderItem)).to have_key("order").and have_key("product")
-      expect(described_class.dependencies_of(Product)).to have_key("category")
-
-      expect(described_class.dependencies_of(User)).to be_empty
-      expect(described_class.dependencies_of(Category)).to be_empty
-
-      expect(described_class.independents).to eq([User, Category])
-
-      expect(described_class.polymorphic_dependencies)
-        .to eq({Comment => { commentable: [Product, OrderItem]}})
-
-      expect(described_class.convenient_order).to eq(
-        [User, Category, Product, Order, OrderItem, Comment])
-    end
-  end
-
   describe '#fetch_data' do
     def exported_ids
       Hash[subject.exported.map{|k,v|[k,v.map{|e|e['id']}]}]
