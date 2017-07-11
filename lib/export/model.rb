@@ -3,12 +3,13 @@ module Export
     def initialize(clazz, dump)
       @clazz = clazz
       @dump = dump
-      @scope = build_scope_from(@dump) || @clazz.all
-      add_dependencies
-      add_polymorphic_dependencies
     end
 
     def scope
+      return @scope if defined?(@scope)
+      @scope = build_scope_from(@dump) || @clazz.all
+      add_dependencies
+      add_polymorphic_dependencies
       @scope
     end
 
@@ -22,11 +23,15 @@ module Export
       end
     end
 
-
     def add_dependencies
       dependencies.each do |column_name, dependency|
-        dependency_clazz = dependency.class_name.constantize
-        condition = self.class.new(dependency_clazz, @dump).scope
+
+        dependency_clazz = dependency.class_name.safe_constantize
+        dependency_model = self.class.new(dependency_clazz, @dump)
+        if dependency_clazz == Role && @clazz == User
+        require 'pry'; binding.pry
+        end
+        condition = dependency_model.scope
         if condition != dependency_clazz.all
           @scope = @scope.where(dependency.name => condition)
         end
@@ -58,14 +63,34 @@ module Export
     end
 
     def dependencies
-      @dependencies ||= @clazz
-        .reflections
-        .select { |_, v| v.macro == :belongs_to && !v.options.key?(:polymorphic) }
+      puts "::::: Deps from #{@clazz}"
+      @dependencies ||= @clazz.reflections.select do |attribute, dependency|
+        dependency_clazz = dependency.class_name.safe_constantize
+        if dependency_clazz.nil?
+          puts "Can't safe constantize #{dependency.class_name}. Ignoring from #{@clazz} dependencies"
+          next
+        elsif !dependency.is_a?(ActiveRecord::Reflection::BelongsToReflection)
+          puts "Ignoring #{dependency.class.name}"
+          next
+        elsif dependency.class_name == @clazz.name
+          puts "Ignoring recursive relationship #{dependency.class_name} == #{@clazz.name}"
+          next
+        elsif dependency.foreign_key.nil?
+          puts "Ignoring without foreign_key #{dependency.inspect}"
+          next
+        elsif @clazz.column_for_attribute(dependency.foreign_key).null == true
+          puts "Ignoring #{attribute} because the column allow null"
+          next 
+        end
+
+        !dependency.options.key?(:polymorphic)
+      end
     end
 
     def polymorphic_dependencies
       @polymorphic_dependencies ||=
         @clazz.reflections.select do |name, reflection|
+          !@clazz.column_for_attribute(reflection.foreign_key).null &&
           reflection.options && reflection.options[:polymorphic] == true
         end
           .values.map(&:name).inject({}) do |acc, name|
@@ -83,7 +108,7 @@ module Export
     end
 
     def self.interesting_models
-      @interesting_models ||= ActiveRecord::Base.descendants
+      @interesting_models ||= ActiveRecord::Base.descendants.reject(&:abstract_class)
     end
   end
 end

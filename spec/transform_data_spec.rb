@@ -2,7 +2,7 @@ require 'spec_helper'
 
 describe Export::TransformData do
 
-  include_examples 'database setup', users: 2
+  include_examples 'database setup'
 
   before do
     Export.transform User do
@@ -25,7 +25,7 @@ describe Export::TransformData do
     let(:first_record) { processed_data.first }
 
     specify do
-      expect(processed_data.size).to eq 2
+      expect(processed_data.size).to eq 3
       processed_data.each do |record|
         expect(record.name).to eq('Contact Name')
         expect(record.created_at && record.updated_at).to be_nil

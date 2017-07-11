@@ -41,7 +41,6 @@ describe Export::Model do
       let(:clazz) { OrderItem }
 
       specify do
-        puts subject.scope.to_sql
         expect(subject.scope).to eq(
           OrderItem.where(
             order: Order.where(
@@ -53,19 +52,47 @@ describe Export::Model do
     end
   end
 
+  context 'Ignore nullable foreign keys from relationship' do
+    let(:clazz) { Role }
+    specify do
+      expect(subject.scope).to eq(
+        Role.where(user: User.order(:id).limit(1)))
+    end
+  end
+
   context 'polymorphic dependencies' do
     let(:clazz) { Comment }
 
     specify do
       expect(subject.scope).to eq(
-        Comment.where(commentable: Product.all)
-        .union(
-          Comment.where(commentable: OrderItem.where(
-            order: Order.where(
-              user: User.order(:id).limit(1)
-            )))
+        Comment.where(
+          role: Role.where(user: User.order(:id).limit(1) ),
+          commentable: Product.all
+        ).union(
+          Comment.where(
+            role: Role.where(user: User.order(:id).limit(1)),
+            commentable: OrderItem.where(
+              order: Order.where(
+                user: User.order(:id).limit(1))))
         )
       )
+    end
+  end
+
+  context 'single table inheritance dependencies' do
+    context 'ignore inverse dependencies' do
+      let(:clazz) { User }
+      specify do
+        expect(subject.dependencies).to be_empty
+        expect(subject.polymorphic_dependencies).to be_empty
+      end
+    end
+    context 'inverse dependencies' do
+      let(:clazz) { Role }
+      specify do
+        expect(subject.dependencies).not_to be_empty
+        expect(subject.polymorphic_dependencies).to be_empty
+      end
     end
   end
 end

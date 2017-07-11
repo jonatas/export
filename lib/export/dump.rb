@@ -31,7 +31,7 @@ module Export
         on "transform" do |model, data|
           t = Time.now
           print "\n#{Time.now} #{model} - #{data.size}"
-          filename = "tmp/#{model.name.underscore}.json"
+          filename = "tmp/#{model.name.underscore.tr('/','__')}.json"
           File.open(filename,"w+"){|f|f.puts data.to_json}
           print " finished #{filename} in #{Time.now - t} seconds. #{File.size(filename)}"
           publish "stored", filename
@@ -52,7 +52,7 @@ module Export
     end
 
     def fetch
-      self.class.interesting_models.each do |model|
+      Export::Model.interesting_models.each do |model|
         print "Fetching: #{model}"
         t = Time.now
         data = fetch_data(model)
@@ -103,13 +103,6 @@ module Export
         file.puts fetch.to_json
       end
       puts "Finished. #{fetch.values.map(&:size).inject(:+)} records saved"
-    end
-
-    def self.interesting_models
-      @interesting_models ||=
-        begin
-          ActiveRecord::Base.descendants
-        end
     end
   end
 end
