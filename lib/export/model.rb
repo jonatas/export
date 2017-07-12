@@ -62,7 +62,7 @@ module Export
       puts "::::: Deps from #{@clazz}"
       @dependencies ||= @clazz.reflections.select do |attribute, dependency|
         next unless dependency.is_a?(ActiveRecord::Reflection::BelongsToReflection)
-        dependency_clazz = dependency.class_name.safe_constantize
+        dependency_clazz = dependency.class_name.safe_constantize || (eval(dependency.class_name) rescue nil)
         if dependency_clazz.nil?
           puts "Can't safe constantize #{dependency.class_name}. Ignoring from #{@clazz} dependencies"
           next
