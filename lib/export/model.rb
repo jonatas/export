@@ -75,6 +75,9 @@ module Export
         elsif @clazz.column_for_attribute(dependency.foreign_key).null == true
           puts "Ignoring #{attribute} because the column allow null"
           next 
+        elsif @clazz.column_for_attribute(dependency.foreign_key).default == "0"
+          puts "Ignoring #{attribute} because the column default is 0"
+          next
         end
 
         !dependency.options.key?(:polymorphic)
