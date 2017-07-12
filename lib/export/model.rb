@@ -10,6 +10,7 @@ module Export
       @scope = build_scope_from(@dump) || @clazz.all
       add_dependencies
       add_polymorphic_dependencies
+      puts @scope.to_sql
       @scope
     end
 
@@ -25,17 +26,12 @@ module Export
 
     def add_dependencies
       dependencies.each do |column_name, dependency|
-
         dependency_clazz = dependency.class_name.safe_constantize
         dependency_model = self.class.new(dependency_clazz, @dump)
-        if dependency_clazz == Role && @clazz == User
-        require 'pry'; binding.pry
-        end
         condition = dependency_model.scope
         if condition != dependency_clazz.all
           @scope = @scope.where(dependency.name => condition)
         end
-        puts @scope.to_sql
       end
     end
 
@@ -65,12 +61,10 @@ module Export
     def dependencies
       puts "::::: Deps from #{@clazz}"
       @dependencies ||= @clazz.reflections.select do |attribute, dependency|
+        next unless dependency.is_a?(ActiveRecord::Reflection::BelongsToReflection)
         dependency_clazz = dependency.class_name.safe_constantize
         if dependency_clazz.nil?
           puts "Can't safe constantize #{dependency.class_name}. Ignoring from #{@clazz} dependencies"
-          next
-        elsif !dependency.is_a?(ActiveRecord::Reflection::BelongsToReflection)
-          puts "Ignoring #{dependency.class.name}"
           next
         elsif dependency.class_name == @clazz.name
           puts "Ignoring recursive relationship #{dependency.class_name} == #{@clazz.name}"
@@ -90,6 +84,7 @@ module Export
     def polymorphic_dependencies
       @polymorphic_dependencies ||=
         @clazz.reflections.select do |name, reflection|
+          reflection.is_a?(ActiveRecord::Reflection::BelongsToReflection) &&
           !@clazz.column_for_attribute(reflection.foreign_key).null &&
           reflection.options && reflection.options[:polymorphic] == true
         end
@@ -108,7 +103,7 @@ module Export
     end
 
     def self.interesting_models
-      @interesting_models ||= ActiveRecord::Base.descendants.reject(&:abstract_class)
+      @interesting_models ||= ActiveRecord::Base.descendants.reject(&:abstract_class).select(&:table_exists?)
     end
   end
 end
