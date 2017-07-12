@@ -10,7 +10,7 @@ module Export
       @scope = build_scope_from(@dump) || @clazz.all
       add_dependencies
       add_polymorphic_dependencies
-      puts @scope.to_sql
+      puts "::::::: #{@clazz} #{@scope.count} :::::::::",@scope.to_sql, "::::::::::::::"
       @scope
     end
 
@@ -19,7 +19,6 @@ module Export
       if additional_scope
         file, line_number = additional_scope.source_location
         code = File.readlines(file)[line_number-1]
-        print ">> #{@clazz}: with conditions  #{code}"
         @clazz.instance_exec(&additional_scope)
       end
     end
@@ -58,25 +57,28 @@ module Export
       end
     end
 
+    def why_skip dependency
+      dependency_clazz = dependency.class_name.safe_constantize || (eval(dependency.class_name) rescue nil)
+      if dependency_clazz.nil?
+        "Can't safe constantize #{dependency.class_name}."
+      elsif dependency.class_name == @clazz.name
+        "Recursive relationship"
+      elsif dependency.foreign_key.nil?
+        "Without foreign_key #{dependency.inspect}"
+      elsif @clazz.column_for_attribute(dependency.foreign_key).null == true
+        "Column #{dependency.foreign_key} allow null"
+      elsif @clazz.column_for_attribute(dependency.foreign_key).default == "0"
+        "Column #{dependency.foreign_key} default is 0"
+      end
+    end
+
+
     def dependencies
-      puts "::::: Deps from #{@clazz}"
       @dependencies ||= @clazz.reflections.select do |attribute, dependency|
         next unless dependency.is_a?(ActiveRecord::Reflection::BelongsToReflection)
-        dependency_clazz = dependency.class_name.safe_constantize || (eval(dependency.class_name) rescue nil)
-        if dependency_clazz.nil?
-          puts "Can't safe constantize #{dependency.class_name}. Ignoring from #{@clazz} dependencies"
-          next
-        elsif dependency.class_name == @clazz.name
-          puts "Ignoring recursive relationship #{dependency.class_name} == #{@clazz.name}"
-          next
-        elsif dependency.foreign_key.nil?
-          puts "Ignoring without foreign_key #{dependency.inspect}"
-          next
-        elsif @clazz.column_for_attribute(dependency.foreign_key).null == true
-          puts "Ignoring #{attribute} because the column allow null"
-          next 
-        elsif @clazz.column_for_attribute(dependency.foreign_key).default == "0"
-          puts "Ignoring #{attribute} because the column default is 0"
+        cause = why_skip(dependency)
+        if cause
+          puts "#{@clazz} ignored #{dependency.class_name}: #{cause}"
           next
         end
 
