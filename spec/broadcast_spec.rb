@@ -13,6 +13,7 @@ describe Export::Broadcast do
       it 'outputs ping pong stuff' do
         expect do
           subject.publish 'ping'
+          sleep 0.1
         end.to output("ping\npong\n").to_stdout
       end
 
@@ -37,7 +38,7 @@ describe Export::Broadcast do
     specify do
       expect do
         subject.publish 'fetch', [1,2,3,4,5,6]
-        sleep 0.001 # as it's consumed by threads, let's wait a bit 8-)
+        sleep 0.1 # as it's consumed by threads, let's wait a bit 8-)
       end.to output(<<~OUTPUT).to_stdout
         fetch: [1, 2, 3, 4, 5, 6]
         map: [2, 3, 4, 5, 6, 7]
