@@ -31,6 +31,7 @@ module Export
         on "transform" do |model, data|
           t = Time.now
           print "\n#{Time.now} #{model} - #{data.size}"
+          Dir.mkdir("tmp") unless Dir.exists?("tmp")
           filename = "tmp/#{model.name.underscore.tr('/','__')}.json"
           File.open(filename,"w+"){|f|f.puts data.to_json}
           print " finished #{filename} in #{Time.now - t} seconds. #{File.size(filename)}"
