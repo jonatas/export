@@ -2,11 +2,12 @@ require 'spec_helper'
 
 describe Export::TransformData do
 
+  include_examples 'database setup'
+
   before do
-    Export.table 'users' do
-      replace :password, 'password'
+    Export.transform User do
       replace :email, ->(record) { strip_email(record.email) }
-      replace :full_name, -> { 'Contact Name' }
+      replace :name, -> { 'Contact Name' }
       ignore :created_at, :updated_at
 
       def strip_email(email)
@@ -16,30 +17,17 @@ describe Export::TransformData do
     end
   end
 
-  let(:users) do
-  user = Struct.new(:full_name, :email, :password, :created_at, :updated_at)
-    [
-      user.new('Jônatas Paganini', 'jonatasdp@gmail.com', 'myPreciousSecret', Time.now, Time.now + 3600 * 24),
-      user.new('Leandro Heuert', 'leandroh@gmail.com', 'LeandroLOL', Time.now, Time.now + 3600 * 24 * 2)
-    ]
-  end
-
-  let(:categories) do
-    category = Struct.new(:name)
-    [ category.new("A"), category.new("B") ]
-  end
-
-  let(:dump) { described_class.new('users') }
-  let(:sample_data) { users }
 
   describe '#process' do
-    let(:processed_data) { dump.process(sample_data) }
+    let(:transform) { described_class.new(User) }
+    let(:sample_data) { User.all }
+    let(:processed_data) { transform.process(sample_data) }
     let(:first_record) { processed_data.first }
+
     specify do
-      expect(processed_data.size).to eq 2
+      expect(processed_data.size).to eq 3
       processed_data.each do |record|
-        expect(record.password).to eq('password')
-        expect(record.full_name).to eq('Contact Name')
+        expect(record.name).to eq('Contact Name')
         expect(record.created_at && record.updated_at).to be_nil
       end
     end

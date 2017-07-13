@@ -1,7 +1,9 @@
 require 'export/version'
 require 'active_support/inflector'
+require 'active_record_union'
 require 'active_record'
-require 'export/table'
+require 'export/transform'
+require 'export/model'
 require 'export/dump'
 require 'export/transform_data'
 
@@ -9,20 +11,13 @@ require 'export/transform_data'
 module Export
 
   # @example
-  #   Export.table :users do
+  #   Export.transform User do
   #      replace :password, 'password'
   #      replace :email, -> (record) { strip_email(record.email) }
   #      replace :full_name, -> { "Contact Name" }
   #      ignore :created_at, :updated_at
-  def self.table(name, &block)
-    object = Export::Table.new(name: name)
-    object.instance_exec(&block) if block_given?
-    object
-  end
-
-  def self.full_table(*names)
-    tbls = names.map(&method(:table))
-    tbls.size > 1 ? tbls : tbls[0]
+  def self.transform(clazz, &block)
+    Export::Transform.new(clazz, &block)
   end
 
   # @example
@@ -36,17 +31,17 @@ module Export
     Export::Dump.new(schema_name, &block)
   end
 
-  def self.transform_data(table_name, data)
-    return data unless Export.replacements_for(table_name)
-    Export::TransformData.new(table_name).process(data)
+  def self.transform_data(model, data)
+    return data unless Export.replacements_for(model)
+    Export::TransformData.new(model).process(data)
   end
 
   def self.replacements
     @replacements ||= {}
   end
 
-  def self.replacements_for(table_name)
-    replacements[table_name] && replacements[table_name].replacements
+  def self.replacements_for(model)
+    replacements[model.to_s]&.replacements
   end
 
   def self.clear_table_replacements!

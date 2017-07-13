@@ -5,8 +5,8 @@ describe Export do
     expect(Export::VERSION).not_to be nil
   end
 
-  let(:users_table) do
-    Export.table 'users' do
+  before do
+    Export.transform 'User' do
       replace :password, 'password'
       replace :email, ->(record) { strip_email(record.email) }
       replace :full_name, -> { 'Contact Name' }
@@ -19,56 +19,9 @@ describe Export do
     end
   end
 
-  let(:addresses_table) do
-    Export.table 'addresses' do
-      replace :street, -> (record) { "Not provided" }
-    end
-  end
-
-  describe '.table' do
-    subject { users_table }
-    its(:name) { is_expected.to include('users') }
-    its(:replacements) do
-      is_expected
-        .to include(:password, :email, :full_name, :created_at, :updated_at)
-    end
-
-    context 'without block definition' do
-      specify do
-        expect do
-          Export.table 'test'
-        end.not_to raise_error
-      end
-    end
-  end
-
-  describe '.full_table' do
-    context 'single table' do
-      subject { Export.full_table 'users' }
-      its(:name) { is_expected.to include('users') }
-      its(:replacements) { is_expected.to be_empty }
-    end
-
-    context 'multiple tables' do
-      subject { Export.full_table 'users', 'categories' }
-      specify do
-        expect(subject.map(&:name)).to eq(['users', 'categories'])
-        expect(subject.map(&:replacements)).to all(be_empty)
-      end
-    end
-  end
-
-  describe '.replacements' do
-    before { users_table and addresses_table }
-    it 'stores table replacements' do
-      expect(Export.replacements).to have_key('users').and have_key('addresses')
-    end
-  end
-
   describe '.replacements_for' do
-    before { users_table }
     it do
-      expect(Export.replacements_for('users'))
+      expect(Export.replacements_for('User'))
         .to have_key(:password).and have_key(:email).and have_key(:full_name)
     end
   end

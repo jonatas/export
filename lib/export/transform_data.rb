@@ -1,21 +1,23 @@
 module Export
+  # Process replacements with transformations
+  # declared in Export::Transform.
   class TransformData
-    attr_reader :table
-    def initialize(table)
-      @table = table
+    def initialize(model)
+      @replacements = Export.replacements_for(model)
+      raise "No replacements for #{model}" if @replacements.nil?
     end
 
+    # Process data using replacements from the declared #model.
     def process(data)
-      new_data = data.map do |record|
+      data.map do |record|
         apply_replacements!(record)
       end
-      new_data
     end
 
     private
 
     def apply_replacements!(record)
-      Export.replacements_for(@table).each do |field, modifiers|
+      @replacements.each do |field, modifiers|
         next if record.public_send(field).nil?
         modifiers.each do |modifier|
           value = modifier && value_from(modifier, record)
