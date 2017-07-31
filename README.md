@@ -52,7 +52,7 @@ The same will happen with `order_items` that depends of what `orders` are being
 exported.
 
 - `all` include all records from n `*tables`
-- `table receives a name and allow you specify a scope directly in the model class.
+- `model` receives a class and allow you specify a scope directly in the model class.
 
 
 ## How to test
