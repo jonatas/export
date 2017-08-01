@@ -44,12 +44,6 @@ RSpec.shared_examples "database setup" do |people: 2, admins: 1, orders: 5, prod
         t.references :commentable, polymorphic: true, index: true, null: false
         t.timestamps
       end
-
-      create_table :media_items do |t|
-        t.string :type, null: false, limit: 32
-        t.string :name
-        t.timestamps
-      end
     end
 
     def down
