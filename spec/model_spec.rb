@@ -95,5 +95,15 @@ describe Export::Model do
       end
     end
   end
+
+  describe '#graph_dependencies' do
+    let(:clazz) { Comment }
+    specify do
+      expect(subject.graph_dependencies).to eq("comment.png")
+    end
+    after { `open comment.png`
+            sleep 1;
+            File.delete("comment.png") }
+  end
 end
 

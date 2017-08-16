@@ -31,6 +31,7 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency 'sqlite3', '~> 1.3.11'
   spec.add_development_dependency 'ffaker', '~> 2.4.0'
   spec.add_development_dependency 'pry'
+  spec.add_development_dependency 'ruby-graphviz'
   spec.add_dependency 'concurrent-ruby-edge'
   spec.add_dependency 'active_record_union'
 end
