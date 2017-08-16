@@ -74,8 +74,7 @@ describe Export::Model do
             commentable: OrderItem.where(
               order: Order.where(
                 user: User.order(:id).limit(1))))
-        )
-      )
+        ))
     end
   end
 
@@ -83,8 +82,8 @@ describe Export::Model do
     context 'ignore inverse dependencies' do
       let(:clazz) { User }
       specify do
-        expect(subject.dependencies).to be_empty
         expect(subject.polymorphic_dependencies).to be_empty
+        expect(subject.dependencies).to have_key "current_role"
       end
     end
     context 'inverse dependencies' do
@@ -97,13 +96,18 @@ describe Export::Model do
   end
 
   describe '#graph_dependencies' do
-    let(:clazz) { Comment }
+    let(:clazz) { OrderItem }
     specify do
-      expect(subject.graph_dependencies).to eq("comment.png")
+      expect(subject.graph_dependencies).to eq(<<~STR.chomp)
+      digraph OrderItem {
+        OrderItem -> Order
+        Order -> User
+        User -> Role
+        OrderItem -> Product
+        Product -> Category
+      }
+      STR
     end
-    after { `open comment.png`
-            sleep 1;
-            File.delete("comment.png") }
   end
 end
 

@@ -1,4 +1,3 @@
-require 'graphviz'
 
 module Export
   class Model
@@ -7,11 +6,11 @@ module Export
       @dump = dump
     end
 
-    def scope
+    def scope(current_deps=[])
       return @scope if defined?(@scope)
       @scope = build_scope_from(@dump) || @clazz.all
-      add_dependencies
-      add_polymorphic_dependencies
+      add_dependencies(current_deps)
+      add_polymorphic_dependencies(current_deps)
       puts "::::::: #{@clazz} #{@scope.count} :::::::::",@scope.to_sql, "::::::::::::::"
       @scope
     end
@@ -19,17 +18,16 @@ module Export
     def build_scope_from dump
       additional_scope = dump.scope[@clazz.to_s]
       if additional_scope
-        file, line_number = additional_scope.source_location
-        code = File.readlines(file)[line_number-1]
         @clazz.instance_exec(&additional_scope)
       end
     end
 
-    def add_dependencies
-      dependencies.each do |column_name, dependency|
+    def add_dependencies(current_deps=[])
+      dependencies(current_deps).each do |column_name, dependency|
         dependency_clazz = dependency.class_name.safe_constantize
+        current_deps << dependency.class_name
         dependency_model = self.class.new(dependency_clazz, @dump)
-        condition = dependency_model.scope
+        condition = dependency_model.scope(current_deps)
         if condition != dependency_clazz.all
           @scope = @scope.where(dependency.name => condition)
         end
@@ -43,11 +41,13 @@ module Export
       end
     end
 
-    def add_polymorphic_dependencies
+    def add_polymorphic_dependencies(current_deps=[])
       current_scope = @scope
-      polymorphic_dependencies.each do |polymorphic_association, associations|
+      polymorphic_dependencies(current_deps).each do |polymorphic_association, associations|
         next unless requires_declare_scope?(associations)
+        current_deps << polymorphic_association
         associations.each_with_index do |association_class,i|
+          current_deps << association_class.name
           association_scope = self.class.new(association_class, @dump).scope
           condition = current_scope.where(polymorphic_association => association_scope)
           if i == 0
@@ -60,24 +60,25 @@ module Export
     end
 
     def why_skip dependency
-      dependency_clazz = dependency.class_name.safe_constantize || (eval(dependency.class_name) rescue nil)
-      foreign_column = @clazz.column_for_attribute(dependency.foreign_key)
-      if @clazz.where(foreign_column.name => nil).any?
-        "Ignoring non strong ref to #{foreign_column}"
-      elsif dependency_clazz.nil?
-        "Can't safe constantize #{dependency.class_name}."
-      elsif foreign_column.null
-        "Foreign column #{foreign_column.inspect} allow null"
-      elsif foreign_column.default == "0"
-        "Foreign column #{foreign_column.inspect} default is zero"
-      elsif dependency.class_name == @clazz.name
+      dependent = dependency.options.has_key?(:dependent)
+      return if dependent && %i[destroy delete_all].include?(dependent)
+
+      if dependency.class_name == @clazz.name
         "Recursive relationship"
       end
     end
 
-    def dependencies
-      @dependencies ||= @clazz.reflections.select do |attribute, dependency|
-        next unless dependency.is_a?(ActiveRecord::Reflection::BelongsToReflection)
+    def current_reflections_less(current_deps=[])
+      current_deps << @clazz.name
+
+      @clazz.reflections.select do |attribute, dependency|
+        dependency.is_a?(ActiveRecord::Reflection::BelongsToReflection) &&
+          !current_deps.include?(dependency.class_name)
+      end
+    end
+
+    def dependencies(current_deps=[])
+      current_reflections_less(current_deps).select do |_, dependency|
         cause = why_skip(dependency)
         if cause
           #puts "#{@clazz} ignored #{dependency.class_name}: #{cause}"
@@ -88,14 +89,11 @@ module Export
       end
     end
 
-    def polymorphic_dependencies
-      @polymorphic_dependencies ||=
-        @clazz.reflections.select do |name, reflection|
-          reflection.is_a?(ActiveRecord::Reflection::BelongsToReflection) &&
-            reflection.options && reflection.options[:polymorphic] == true
-        end
-          .values.map(&:name).inject({}) do |acc, name|
-          assocs = polymorphic_associates_with(name)
+    def polymorphic_dependencies(current_deps=[])
+      current_reflections_less(current_deps).select do |_, dependency|
+            dependency.options && dependency.options[:polymorphic] == true
+        end.values.map(&:name).inject({}) do |acc, name|
+          assocs = polymorphic_associates_with(name) - current_deps
           acc[name] = assocs if assocs.any?
           acc
         end
@@ -112,54 +110,39 @@ module Export
       @interesting_models ||= ActiveRecord::Base.descendants.reject(&:abstract_class).select(&:table_exists?)
     end
 
-    def graph_dependencies(g = nil, main = nil, current_deps={})
-      if g.nil?
-        g = GraphViz.new( :G, :type => :digraph )
-        main = g.add_nodes(@clazz.name)
-        puts "starting from #{@clazz.name}"
+    def graph_dependencies(main = nil, current_deps=[], output=nil)
+      if main.nil?
+        main = @clazz.name
+        output = "digraph #{ main } {"
+        current_deps << main
         root = true
-      else
-        puts "> going recursively on #{@clazz.name} deps: #{current_deps.keys}"
       end
 
-      dependencies.each do |column_name, dependency|
+      dependencies(current_deps).each do |column_name, dependency|
         dependency_clazz = dependency.class_name.safe_constantize
-        if current_deps.has_key?(dependency_clazz.name)
-          puts "Ignoring cyclic dependency #{dependency_clazz.name}. Deps: #{current_deps.keys.inspect}"
-          next
-        end
+        next if dependency_clazz.nil?
+        current_deps << dependency.class_name
         dependency_model = self.class.new(dependency_clazz, @dump)
-        dependency_node = g.add_nodes(dependency_clazz.name )
-        current_deps[dependency_clazz.name] = 1
-        g.add_edges( main, dependency_node)
-        puts "add edge #{main} => #{dependency_clazz.name}"
-        dependency_model.graph_dependencies(g, dependency_node, current_deps)
+        output << "\n  #{main} -> #{dependency.class_name.tr(':','')}"
+        dependency_model.graph_dependencies(dependency.class_name, current_deps, output)
       end
 
-      polymorphic_dependencies.each do |association, classes|
-        assoc_node = g.add_nodes(association.to_s)
-        g.add_edges( main, assoc_node)
-        classes.uniq.each do |dependency|
-          if current_deps.has_key?(dependency.name)
-            puts "Ignoring cyclic dependency #{dependency.name}. Deps: #{current_deps.keys.inspect}"
+      polymorphic_dependencies(current_deps).each do |association, classes|
+        classes.each do |dependency|
+          if current_deps.include?(dependency.name)
             next
           end
-          current_deps[dependency.name] = 1
-          dependency_node = g.add_nodes(dependency.name)
-          puts "add edge #{association} => #{dependency.name}"
-          g.add_edges( assoc_node, dependency_node)
+          current_deps << dependency.name
+          output << %|\n  #{main} -> #{dependency.name.tr(':','')} [label="#{association}"]|
           dependency_model = self.class.new(dependency, @dump)
-          dependency_model.graph_dependencies(g, dependency_node, current_deps)
+          dependency_model.graph_dependencies(dependency.name, current_deps, output)
         end
       end
 
-      if root && (dependencies.any? || polymorphic_dependencies.any?)
-        filename = "#{@clazz.name.downcase}.png"
-        puts "output #{filename}"
-        g.output( :png => filename )
-        puts "Done with file #{filename}"
-        filename
+      if root
+        output << "\n}"
       end
+      output
     end
   end
 end
