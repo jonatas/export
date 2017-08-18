@@ -82,7 +82,7 @@ RSpec.shared_examples "database setup" do |people: 2, admins: 1, orders: 5, prod
     class Category < ApplicationRecord; end
 
     class Order < ApplicationRecord
-      belongs_to :user, dependent: :destroy
+      belongs_to :user
     end
 
     class Product < ApplicationRecord
