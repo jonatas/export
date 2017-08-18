@@ -96,17 +96,57 @@ describe Export::Model do
   end
 
   describe '#graph_dependencies' do
-    let(:clazz) { OrderItem }
-    specify do
-      expect(subject.graph_dependencies).to eq(<<~STR.chomp)
-      digraph OrderItem {
-        OrderItem -> Order
-        Order -> User
-        User -> Role
-        OrderItem -> Product
-        Product -> Category
-      }
-      STR
+    let(:clazz) { Comment }
+    let(:output) { subject.graph_dependencies }
+
+    context 'with dump show % of records being exported' do
+      specify do
+        out = output.gsub!(/"[\d\.]+%/m, '"x%') # replace % per x
+        expect(out).to eq(<<~STR.chomp)
+          digraph Comment {
+            Comment [label="x% Comment"]
+            Role [label="x% Role"]
+            Comment -> Role
+            User [label="x% User"]
+            Role -> User
+            Product [label="x% Product"]
+            Comment -> Product [label="commentable"]
+            Category [label="x% Category"]
+            Product -> Category
+            OrderItem [label="x% OrderItem"]
+            Comment -> OrderItem [label="commentable"]
+            Order [label="x% Order"]
+            OrderItem -> Order
+            User [label="x% User"]
+            Order -> User
+          }
+        STR
+      end
+    end
+
+    context 'without dump only entities' do
+      subject { described_class.new clazz, nil }
+      specify do
+        expect(output).to eq(<<~STR.chomp)
+          digraph Comment {
+            Comment [label="Comment"]
+            Role [label="Role"]
+            Comment -> Role
+            User [label="User"]
+            Role -> User
+            Product [label="Product"]
+            Comment -> Product [label="commentable"]
+            Category [label="Category"]
+            Product -> Category
+            OrderItem [label="OrderItem"]
+            Comment -> OrderItem [label="commentable"]
+            Order [label="Order"]
+            OrderItem -> Order
+            User [label="User"]
+            Order -> User
+          }
+        STR
+      end
     end
   end
 end
