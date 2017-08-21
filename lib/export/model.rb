@@ -2,9 +2,6 @@
 module Export
   class Model
 
-    def self.scope_for(clazz, dump=nil, current_deps=Set.new)
-      new(clazz, dump).scope(current_deps)
-    end
 
     def initialize(clazz, dump=nil)
       raise "Invalid class: #{clazz}" if clazz.nil? || !(clazz < ActiveRecord::Base)
@@ -15,6 +12,7 @@ module Export
     def scope(current_deps=Set.new)
       return @scope if defined?(@scope)
       @scope = build_scope_from(@dump) || @clazz.all
+      current_deps << @clazz.name
       add_dependencies(current_deps)
       add_polymorphic_dependencies(current_deps)
       @scope
@@ -28,13 +26,14 @@ module Export
     end
 
     def scope_for(clazz, current_deps=Set.new)
-      self.class.scope_for(clazz, @dump, current_deps.dup)
+      self.class.new(clazz, @dump).scope(current_deps.dup)
     end
 
     def add_dependencies(current_deps=Set.new)
       dependencies(current_deps).each do |column_name, dependency|
-        current_deps << dependency.class_name
         dependency_clazz = dependency.class_name.safe_constantize
+        next if dependency_clazz.nil? || current_deps.include?(dependency.class_name)
+        current_deps << dependency.class_name
         condition = scope_for(dependency_clazz, current_deps)
         if condition != dependency_clazz.all
           @scope = @scope.where(dependency.name => condition)
@@ -46,6 +45,7 @@ module Export
       current_scope = @scope
       polymorphic_dependencies(current_deps).each do |polymorphic_association, associations|
         associations.each_with_index do |association_class,i|
+          next if current_deps.include?(association_class.name)
           association_scope = scope_for(association_class, current_deps)
           condition = current_scope.where(polymorphic_association => association_scope)
           if i == 0
@@ -55,9 +55,6 @@ module Export
           end
         end
       end
-    end
-
-    def why_skip dependency
     end
 
     def current_reflections_less(current_deps=Set.new)
