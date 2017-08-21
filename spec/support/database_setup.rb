@@ -44,12 +44,6 @@ RSpec.shared_examples "database setup" do |people: 2, admins: 1, orders: 5, prod
         t.references :commentable, polymorphic: true, index: true, null: false
         t.timestamps
       end
-
-      create_table :media_items do |t|
-        t.string :type, null: false, limit: 32
-        t.string :name
-        t.timestamps
-      end
     end
 
     def down
@@ -69,16 +63,14 @@ RSpec.shared_examples "database setup" do |people: 2, admins: 1, orders: 5, prod
     end
 
     class User < ApplicationRecord
-      scope :random, -> { offset(rand(count)).first }
-      has_many :orders
-
       has_many :roles, dependent: :destroy, inverse_of: :user, autosave: false, validate: false
+      has_many :orders, dependent: :destroy
       belongs_to :current_role, class_name: 'Role'
 
     end
 
     class Role < ApplicationRecord
-      belongs_to :user, dependent: :destroy, autosave: true, inverse_of: :roles
+      belongs_to :user, autosave: true, inverse_of: :roles
 
       after_create do
         self.user.update_attributes current_role: self
@@ -95,7 +87,7 @@ RSpec.shared_examples "database setup" do |people: 2, admins: 1, orders: 5, prod
 
     class Product < ApplicationRecord
       belongs_to :category
-      has_many :comments, as: :commentable
+      has_many :comments, as: :commentable, dependent: :destroy
     end
 
     class OrderItem < ApplicationRecord
@@ -105,7 +97,7 @@ RSpec.shared_examples "database setup" do |people: 2, admins: 1, orders: 5, prod
     end
 
     class Comment < ApplicationRecord
-       belongs_to :role
+       belongs_to :role, dependent: :destroy
        belongs_to :commentable, polymorphic: true
     end
 
