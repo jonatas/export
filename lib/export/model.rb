@@ -1,8 +1,6 @@
 
 module Export
   class Model
-
-
     def initialize(clazz, dump=nil)
       raise "Invalid class: #{clazz}" if clazz.nil? || !(clazz < ActiveRecord::Base)
       @clazz = clazz
@@ -12,7 +10,6 @@ module Export
     def scope(current_deps=Set.new)
       return @scope if defined?(@scope)
       @scope = build_scope_from(@dump) || @clazz.all
-      current_deps << @clazz.name
       add_dependencies(current_deps)
       add_polymorphic_dependencies(current_deps)
       @scope
@@ -26,14 +23,15 @@ module Export
     end
 
     def scope_for(clazz, current_deps=Set.new)
-      self.class.new(clazz, @dump).scope(current_deps.dup)
+      @scope_for ||= {}
+      @scope_for[clazz] ||= self.class.new(clazz, @dump).scope(current_deps)
     end
 
     def add_dependencies(current_deps=Set.new)
-      dependencies(current_deps).each do |column_name, dependency|
+      dependencies(current_deps).each do |_, dependency|
         dependency_clazz = dependency.class_name.safe_constantize
-        next if dependency_clazz.nil? || current_deps.include?(dependency.class_name)
-        current_deps << dependency.class_name
+        next if dependency_clazz.nil? || current_deps.include?(dependency)
+        current_deps << dependency
         condition = scope_for(dependency_clazz, current_deps)
         if condition != dependency_clazz.all
           @scope = @scope.where(dependency.name => condition)
@@ -45,7 +43,7 @@ module Export
       current_scope = @scope
       polymorphic_dependencies(current_deps).each do |polymorphic_association, associations|
         associations.each_with_index do |association_class,i|
-          next if current_deps.include?(association_class.name)
+          next if current_deps.include?(association_class)
           association_scope = scope_for(association_class, current_deps)
           condition = current_scope.where(polymorphic_association => association_scope)
           if i == 0
@@ -58,11 +56,10 @@ module Export
     end
 
     def current_reflections_less(current_deps=Set.new)
-      current_deps << @clazz.name
-
       @clazz.reflections.select do |attribute, dependency|
         dependency.is_a?(ActiveRecord::Reflection::BelongsToReflection) &&
-        !current_deps.include?(dependency.class_name)
+        dependency.class_name != @clazz.name &&
+        !current_deps.include?(dependency)
       end
     end
 
@@ -72,7 +69,7 @@ module Export
         dependent = dependency.options.has_key?(:dependent)
         next if dependent && %i[destroy delete_all].include?(dependent)
         next if dependency.options.key?(:polymorphic)
-        dependency.class_name != @clazz.name
+        true
       end
     end
 
@@ -110,7 +107,6 @@ module Export
         main = @clazz.name
         output = "digraph #{ main } {"
         output << %|\n  #{ main } [label="#{describe}"]|
-        current_deps << main
         root = true
       end
 
@@ -124,8 +120,8 @@ module Export
 
       dependencies(current_deps).each do |column_name, dependency|
         dependency_clazz = dependency.class_name.safe_constantize
-        next if dependency_clazz.nil? || current_deps.include?(dependency.class_name)
-        current_deps << dependency.class_name
+        next if dependency_clazz.nil? || current_deps.include?(dependency)
+        current_deps << dependency
         dependency_model = self.class.new(dependency_clazz, @dump)
         output << %|\n  #{ dependency.class_name} [label="#{dependency_model.describe}"]|
         connect[main, dependency.class_name]
@@ -134,8 +130,8 @@ module Export
 
       polymorphic_dependencies(current_deps).each do |association, classes|
         classes.each do |dependency|
-          next if current_deps.include?(dependency.name)
-          current_deps << dependency.name
+          next if current_deps.include?(dependency)
+          current_deps << dependency
           dependency_model = self.class.new(dependency, @dump)
           output << %|\n  #{ dependency.name} [label="#{dependency_model.describe}"]|
           connect[main, dependency.name, association]
