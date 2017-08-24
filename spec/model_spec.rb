@@ -9,6 +9,7 @@ describe Export::Model do
   let(:dump) do
     Export::Dump.new 'one user' do
       model(User) { order(:id).limit(1) }
+      ignore "User#current_role_id"
     end
   end
 
@@ -17,7 +18,7 @@ describe Export::Model do
       let(:clazz) { User }
 
       specify do
-        expect(subject.scope).to eq(User.order(:id).limit(1))
+        expect(subject.scope.to_sql).to eq(User.order(:id).limit(1).to_sql)
       end
     end
 
@@ -91,61 +92,6 @@ describe Export::Model do
       specify do
         expect(subject.dependencies).not_to be_empty
         expect(subject.polymorphic_dependencies).to be_empty
-      end
-    end
-  end
-
-  describe '#graph_dependencies' do
-    let(:clazz) { Comment }
-    let(:output) { subject.graph_dependencies }
-
-    context 'with dump show % of records being exported' do
-      specify do
-        out = output.gsub!(/"[\d\.]+%/m, '"x%') # replace % per x
-        expect(out).to eq(<<~STR.chomp)
-          digraph Comment {
-            Comment [label="x% Comment"]
-            Role [label="x% Role"]
-            Comment -> Role
-            User [label="x% User"]
-            Role -> User
-            Product [label="x% Product"]
-            Comment -> Product [label="commentable"]
-            Category [label="x% Category"]
-            Product -> Category
-            OrderItem [label="x% OrderItem"]
-            Comment -> OrderItem [label="commentable"]
-            Order [label="x% Order"]
-            OrderItem -> Order
-            User [label="x% User"]
-            Order -> User
-          }
-        STR
-      end
-    end
-
-    context 'without dump only entities' do
-      subject { described_class.new clazz, nil }
-      specify do
-        expect(output).to eq(<<~STR.chomp)
-          digraph Comment {
-            Comment [label="Comment"]
-            Role [label="Role"]
-            Comment -> Role
-            User [label="User"]
-            Role -> User
-            Product [label="Product"]
-            Comment -> Product [label="commentable"]
-            Category [label="Category"]
-            Product -> Category
-            OrderItem [label="OrderItem"]
-            Comment -> OrderItem [label="commentable"]
-            Order [label="Order"]
-            OrderItem -> Order
-            User [label="User"]
-            Order -> User
-          }
-        STR
       end
     end
   end
