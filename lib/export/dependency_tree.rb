@@ -31,7 +31,7 @@ module Export
         !include_dependency?(dependency)
       end.values
     end
-    
+
     def dependencies
       build_dependencies if @dependencies.empty?
       @dependencies
@@ -69,7 +69,7 @@ module Export
             @dependencies["#{clazz}##{dependency.foreign_key}"] = self.class.new(clazz, dependency, self)
           end
         else
-          key = "#{dependency.class_name}##{dependency.foreign_key}"
+          key = "#{@model}##{dependency.foreign_key}"
           clazz = dependency.class_name.safe_constantize
           @dependencies[key] = self.class.new(clazz, dependency, self)
         end
@@ -97,8 +97,10 @@ module Export
       end
 
       dependencies.each do |key, dependency_tree|
-        output << dependency_tree.main_output
-        output << "\n  #{self.label} -> #{dependency_tree.label}" if dependency_tree.polymorphic?
+        dep_label = dependency_tree.main_output
+        dep_connection = "\n  #{self.label} -> #{dependency_tree.label} [label=\"#{key}\"]"
+        output << dep_label unless output.include?(dep_label)
+        output << dep_connection unless output.include?(dep_connection)
         dependency_tree.to_s(output)
       end
 

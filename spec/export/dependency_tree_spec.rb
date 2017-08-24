@@ -12,7 +12,7 @@ describe Export::DependencyTree do
     before { subject.add_dependency(dependency) }
     specify do
       expect(subject.dependencies.length).to eq(1)
-      expect(subject.dependencies.keys).to eq(%w(Role#user_id))
+      expect(subject.dependencies.keys).to eq(%w(User#user_id))
     end
   end
 
@@ -48,7 +48,7 @@ describe Export::DependencyTree do
         expect(subject.dependencies).to be_a(Hash)
         expect(subject.dependencies.length).to eq(1)
         name, dependency = subject.dependencies.first
-        expect(name).to eq("Role#current_role_id")
+        expect(name).to eq("User#current_role_id")
         expect(dependency).to be_a(described_class)
       end
     end
@@ -65,7 +65,26 @@ describe Export::DependencyTree do
     context 'include polymorphic dependencies' do
       let(:clazz) { Comment }
       specify do
-        puts subject
+        expect(subject.to_s).to eq(<<~STR.chomp)
+          digraph Comment {
+            Comment [label="Comment"]
+            Role [label="Role"]
+            Comment -> Role [label="Comment#role_id"]
+            User [label="User"]
+            Role -> User [label="Role#user_id"]
+            Product [label="Product"]
+            Comment -> Product [label="Product#commentable_id"]
+            Category [label="Category"]
+            Product -> Category [label="Product#category_id"]
+            OrderItem [label="OrderItem"]
+            Comment -> OrderItem [label="OrderItem#commentable_id"]
+            Order [label="Order"]
+            OrderItem -> Order [label="OrderItem#order_id"]
+            Order -> User [label="Order#user_id"]
+            User -> Role [label="User#current_role_id"]
+            OrderItem -> Product [label="OrderItem#product_id"]
+          }
+        STR
       end
     end
   end
