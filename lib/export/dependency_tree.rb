@@ -117,6 +117,44 @@ module Export
       end.map(&:name).uniq.map(&:safe_constantize)
     end
 
+    def fetch(additional_scope = {}, ignore_keys = [])
+      scope =
+        if additional_scope.has_key?(@model.to_s)
+          @model.instance_exec(&additional_scope[@model.to_s])
+        else
+          @model.all
+        end
+      unless dependencies.empty?
+        polymorphics = []
+        dependencies.each do |key, dep|
+          next if ignore_keys.include?(key)
+          if dep.polymorphic?
+            polymorphics << dep
+            next
+          end
+          puts "#{@model} -> #{key}"
+          additional_where = dep.fetch(additional_scope, ignore_keys)
+          if additional_where != dep.model.all
+            puts "where #{dep.name} => #{additional_where.to_sql.split("WHERE ").last}"
+            scope = scope.where(dep.name => additional_where)
+          end
+        end
+        unless polymorphics.empty?
+          current_scope = scope.dup
+          polymorphics.each_with_index do |dep, i|
+            condition = current_scope.where(dep.name => dep.fetch(additional_scope, ignore_keys))
+            if i == 0
+              scope = condition
+            else
+              scope = scope.union condition
+            end
+          end
+        end
+      end
+      puts scope.to_sql
+      scope
+    end
+
     def self.interesting_models
       @interesting_models ||= ActiveRecord::Base.descendants.reject(&:abstract_class).select(&:table_exists?)
     end

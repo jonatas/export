@@ -9,7 +9,6 @@ describe Export::Model do
   let(:dump) do
     Export::Dump.new 'one user' do
       model(User) { order(:id).limit(1) }
-      ignore "User#current_role_id"
     end
   end
 
