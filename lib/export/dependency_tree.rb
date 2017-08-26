@@ -1,11 +1,16 @@
 module Export
   class DependencyTree
     attr_reader :dependencies, :parent, :model, :metadata
-    def initialize(model, metadata=nil, parent=nil)
+    def initialize(model, metadata: nil, parent: nil, except_keys: nil)
       @model = model
       @metadata = metadata
       @parent = parent
       @dependencies = {}
+      @except_keys = except_keys
+    end
+
+    def except_keys
+      @except_keys || @parent&.except_keys
     end
 
     def class_name
@@ -26,6 +31,7 @@ module Export
     end
 
     def interesting_reflections
+      return [] if @model.nil?
       @model.reflections.select do |attribute, dependency|
         dependency.is_a?(ActiveRecord::Reflection::BelongsToReflection) &&
         !include_dependency?(dependency)
@@ -66,16 +72,20 @@ module Export
       unless cyclic?(dependency)
         if polymorphic?(dependency)
           polymorphic_associations(dependency).map do |clazz|
-            @dependencies["#{clazz}##{dependency.foreign_key}"] = self.class.new(clazz, dependency, self)
+            add_dependency_if_needed clazz, dependency
           end
         else
-          key = "#{@model}##{dependency.foreign_key}"
           clazz = dependency.class_name.safe_constantize
-          @dependencies[key] = self.class.new(clazz, dependency, self)
+          add_dependency_if_needed clazz, dependency
         end
       end
     end
 
+    def add_dependency_if_needed(clazz, dependency)
+      key = "#{polymorphic?(dependency) ? clazz : @model}##{dependency.foreign_key}"
+      return if except_keys.include?(key)
+      @dependencies[key] = self.class.new(clazz, metadata: dependency, parent: self)
+    end
 
     def polymorphic?(reflection=@metadata)
       return false unless reflection

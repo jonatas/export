@@ -4,8 +4,10 @@ describe Export::DependencyTree do
 
   include_examples 'database setup'
 
+  subject { described_class.new clazz, except_keys: except_keys }
+
   let(:clazz) { User }
-  subject { described_class.new clazz }
+  let(:except_keys) {  %w(User#current_role_id) }
 
   context "#add_dependency" do
     let(:dependency) { User.reflections.values.first }
@@ -44,12 +46,20 @@ describe Export::DependencyTree do
     end
 
     context 'include model dependencies' do
+      let(:except_keys) { [] }
       specify do
         expect(subject.dependencies).to be_a(Hash)
         expect(subject.dependencies.length).to eq(1)
         name, dependency = subject.dependencies.first
         expect(name).to eq("User#current_role_id")
         expect(dependency).to be_a(described_class)
+      end
+    end
+
+    context 'with implicit except keys' do
+      # default `except_keys` is ignore User#current_role_id
+      specify do
+        expect(subject.dependencies).to be_empty
       end
     end
 
@@ -81,7 +91,6 @@ describe Export::DependencyTree do
             Order [label="Order"]
             OrderItem -> Order [label="OrderItem#order_id"]
             Order -> User [label="Order#user_id"]
-            User -> Role [label="User#current_role_id"]
             OrderItem -> Product [label="OrderItem#product_id"]
           }
         STR
@@ -91,8 +100,7 @@ describe Export::DependencyTree do
 
   context "#fetch" do
     let(:clazz) { User }
-    let(:except_keys) {  %w(User#current_role_id) }
-    let(:fetch) { subject.fetch(additional_scope, except_keys) }
+    let(:fetch) { subject.fetch(additional_scope) }
 
     context 'return all with no additional rules' do
       let(:additional_scope) { {} }
