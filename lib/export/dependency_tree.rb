@@ -127,46 +127,13 @@ module Export
       end.map(&:name).uniq.map(&:safe_constantize)
     end
 
-    def initialize_scope(additional_scope={})
-      if additional_scope.has_key?(@model.to_s)
-        @model.instance_exec(&additional_scope[@model.to_s])
-      else
-        @model.all
-      end
-    end
-
-    def polymorphic_dependencies
-      dependencies.values.select(&:polymorphic?)
-    end
-
     def has_additional_scope?(additional_scope={})
       additional_scope.has_key?(@model.to_s) ||
         dependencies.values.any?{|dep|dep.has_additional_scope?(additional_scope)}
     end
 
     def fetch(additional_scope = {})
-      scope = initialize_scope(additional_scope)
-      dependencies.each do |key, dep|
-        next if polymorphic_dependencies.include?(dep)
-        if has_additional_scope?(additional_scope)
-          query = dep.fetch(additional_scope)
-          if query != dep.model.all
-            scope = scope.where(dep.name => query)
-          end
-        end
-      end
-      if polymorphic_dependencies.any?{|dep|dep.has_additional_scope?(additional_scope)}
-        current_scope = scope.dup
-        polymorphic_dependencies.each_with_index do |dep, i|
-          condition = current_scope.where(dep.name => dep.fetch(additional_scope))
-          if i == 0
-            scope = condition
-          else
-            scope = scope.union condition
-          end
-        end
-      end
-      scope
+      Export::Fetch.new(self, additional_scope).scope
     end
 
     def self.interesting_models
