@@ -147,7 +147,7 @@ describe Export::DependencyTree do
         end
       end
 
-      context 'include polymorphic dependencies' do
+      context 'with polymorphic dependencies' do
         let(:clazz) { Comment }
         let(:additional_scope) do
           {
@@ -155,7 +155,7 @@ describe Export::DependencyTree do
           }
         end
 
-        specify do
+        specify 'include union repeating the scope for each dependency' do
           expect(fetch).to eq(
             Comment.where(
               commentable: Product.where(
@@ -172,7 +172,7 @@ describe Export::DependencyTree do
         end
       end
 
-      context 'inject additional scope in each polymorphic dependencies' do
+      context 'inject additional scope' do
         let(:clazz) { Comment }
         let(:additional_scope) do
           {
@@ -180,10 +180,8 @@ describe Export::DependencyTree do
           }
         end
 
-        specify do
-          expect(fetch)
-            .to eq(Comment.where( id: [1,2,3], commentable: Product.all)
-              .union(Comment.where( id: [1,2,3], commentable: OrderItem.all)))
+        specify 'ignore union all if no polymorphic dependencies uses additional scopes' do
+          expect(fetch).to eq(Comment.where( id: [1,2,3]))
         end
       end
     end

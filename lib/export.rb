@@ -4,7 +4,6 @@ require 'active_record_union'
 require 'active_record'
 require 'export/transform'
 require 'export/dependency_tree'
-require 'export/model'
 require 'export/dump'
 require 'export/transform_data'
 

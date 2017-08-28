@@ -10,7 +10,7 @@ module Export
     end
 
     def except_keys
-      @except_keys || @parent&.except_keys
+      @except_keys || @parent&.except_keys || []
     end
 
     def class_name
@@ -127,41 +127,45 @@ module Export
       end.map(&:name).uniq.map(&:safe_constantize)
     end
 
-    def fetch(additional_scope = {}, ignore_keys = [])
-      scope =
-        if additional_scope.has_key?(@model.to_s)
-          @model.instance_exec(&additional_scope[@model.to_s])
-        else
-          @model.all
-        end
-      unless dependencies.empty?
-        polymorphics = []
-        dependencies.each do |key, dep|
-          next if ignore_keys.include?(key)
-          if dep.polymorphic?
-            polymorphics << dep
-            next
-          end
-          puts "#{@model} -> #{key}"
-          additional_where = dep.fetch(additional_scope, ignore_keys)
-          if additional_where != dep.model.all
-            puts "where #{dep.name} => #{additional_where.to_sql.split("WHERE ").last}"
-            scope = scope.where(dep.name => additional_where)
-          end
-        end
-        unless polymorphics.empty?
-          current_scope = scope.dup
-          polymorphics.each_with_index do |dep, i|
-            condition = current_scope.where(dep.name => dep.fetch(additional_scope, ignore_keys))
-            if i == 0
-              scope = condition
-            else
-              scope = scope.union condition
-            end
+    def initialize_scope(additional_scope={})
+      if additional_scope.has_key?(@model.to_s)
+        @model.instance_exec(&additional_scope[@model.to_s])
+      else
+        @model.all
+      end
+    end
+
+    def polymorphic_dependencies
+      dependencies.values.select(&:polymorphic?)
+    end
+
+    def has_additional_scope?(additional_scope={})
+      additional_scope.has_key?(@model.to_s) ||
+        dependencies.values.any?{|dep|dep.has_additional_scope?(additional_scope)}
+    end
+
+    def fetch(additional_scope = {})
+      scope = initialize_scope(additional_scope)
+      dependencies.each do |key, dep|
+        next if polymorphic_dependencies.include?(dep)
+        if has_additional_scope?(additional_scope)
+          query = dep.fetch(additional_scope)
+          if query != dep.model.all
+            scope = scope.where(dep.name => query)
           end
         end
       end
-      puts scope.to_sql
+      if polymorphic_dependencies.any?{|dep|dep.has_additional_scope?(additional_scope)}
+        current_scope = scope.dup
+        polymorphic_dependencies.each_with_index do |dep, i|
+          condition = current_scope.where(dep.name => dep.fetch(additional_scope))
+          if i == 0
+            scope = condition
+          else
+            scope = scope.union condition
+          end
+        end
+      end
       scope
     end
 

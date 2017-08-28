@@ -53,7 +53,7 @@ module Export
     end
 
     def fetch
-      Export::Model.interesting_models.each do |model|
+      Export::DependencyTree.interesting_models.each do |model|
         print "Fetching: #{model}"
         t = Time.now
         data = fetch_data(model)
@@ -66,7 +66,7 @@ module Export
     end
 
     def scope_for(clazz)
-      Export::Model.new(clazz, self).scope
+      Export::DependencyTree.new(clazz).fetch(@scope)
     end
 
     def fetch_data clazz
