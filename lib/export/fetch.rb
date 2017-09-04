@@ -3,6 +3,7 @@ module Export
   class Fetch
     attr_reader :dependencies, :additional_scope, :model
     def initialize(dependency_tree, additional_scope)
+      @dependency_tree = dependency_tree
       @model = dependency_tree.model
       @dependencies = dependency_tree.dependencies.values
       @additional_scope = additional_scope
@@ -19,9 +20,9 @@ module Export
     def initialize_scope
       @scope =
         if scope = additional_scope[model.to_s]
-          model.instance_exec(&scope)
+          model.unscoped.instance_exec(&scope)
         else
-          model.all
+          model.unscoped.all
         end
     end
 
@@ -53,7 +54,7 @@ module Export
       dependencies.select(&:polymorphic?)
     end
 
-    def has_additional_scope?(additional_scope=@additional_scope)
+    def has_additional_scope?
       additional_scope.has_key?(@model.to_s) ||
         @dependencies.any?{|dep|dep.has_additional_scope?(additional_scope)}
     end
