@@ -11,6 +11,7 @@ module Export
       @exporting = {}
       @ignore = []
       @queue = Queue.new
+      @except_keys = []
       @broadcast = setup_broadcast
       instance_exec(&block) if block_given?
     end
@@ -50,6 +51,10 @@ module Export
 
     def ignore *model
       @ignore += [*model]
+    end
+
+    def except *keys
+      @except_keys += [*keys]
     end
 
     def fetch
@@ -95,15 +100,6 @@ module Export
       else
         fail "#{model} failed downloading with: #{error} \n #{message.join("\n")}"
       end
-    end
-
-    def process
-      filename = @schema.tr(' ','_').downcase + '.json'
-      puts "Writing: #{filename}"
-      File.open(filename, 'w+') do |file|
-        file.puts fetch.to_json
-      end
-      puts "Finished. #{fetch.values.map(&:size).inject(:+)} records saved"
     end
   end
 end
