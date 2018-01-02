@@ -1,109 +1,127 @@
 require 'export/broadcast'
 
 module Export
+  # Represents the dump process
   class Dump
-    attr_reader :options, :exported, :broadcast, :scope
+    DEFAULT_SCHEMA = 'dump'.freeze
 
-    def initialize(schema, &block)
+    # attr_reader :options, :exported, :broadcast, :scope
+
+    def initialize(schema = DEFAULT_SCHEMA, &block)
       @schema = schema
-      @scope = {}
-      @exported = {}
-      @exporting = {}
-      @ignore = []
-      @queue = Queue.new
-      @broadcast = setup_broadcast
-      instance_exec(&block) if block_given?
+      @models = {}
+      # @exported = {}
+      # @exporting = {}
+      # @ignore = []
+      # @queue = Queue.new
+      # @broadcast = setup_broadcast
+      config(&block) if block_given?
     end
 
-    def setup_broadcast
-      Broadcast.new do
-        on "fetch" do |model, data|
-          puts "Fetched: #{model} with #{data&.length} records"
-          if Export.replacements_for(model)
-            print " > Transforming..."
-            t = Time.now
-            data = Export.transform_data(model, data)
-            print " done in #{Time.now - t} seconds"
-          end
-          publish "transform", model, data
-        end
+    def config(&block)
+      instance_exec(&block)
+    end
 
-        on "transform" do |model, data|
-          t = Time.now
-          print "\n#{Time.now} #{model} - #{data.size}"
-          Dir.mkdir("tmp") unless Dir.exists?("tmp")
-          filename = "tmp/#{model.name.underscore.tr('/','__')}.json"
-          File.open(filename,"w+"){|f|f.puts data.to_json}
-          print " finished #{filename} in #{Time.now - t} seconds. #{File.size(filename)}"
-          publish "stored", filename
-        end
+    def model_for(clazz)
+      model = @models[clazz]
+      unless model
+        model = Model.new(clazz)
+        @models[clazz] = model
 
-        on "stored" do |filename|
-          puts "add to zip: #{filename}"
-        end
+        model.load(self)
       end
+
+      model
+    end
+    alias model model_for
+
+    def scope(clazz, &block)
+      model_for(clazz).scope_by(&block)
     end
 
-    def model name, &block
-      @scope[name.to_s] = block
-    end
+    # def setup_broadcast # rubocop:disable Metrics/AbcSize
+    #   Broadcast.new do
+    #     on 'fetch' do |model, data|
+    #       puts "Fetched: #{model} with #{data&.length} records"
+    #       if Export.replacements_for(model)
+    #         print ' > Transforming...'
+    #         t = Time.now
+    #         data = Export.transform_data(model, data)
+    #         print " done in #{Time.now - t} seconds"
+    #       end
+    #       publish 'transform', model, data
+    #     end
 
-    def ignore *model
-      @ignore += [*model]
-    end
+    #     on 'transform' do |model, data|
+    #       t = Time.now
+    #       print "\n#{Time.now} #{model} - #{data.size}"
+    #       Dir.mkdir('tmp') unless Dir.exist?('tmp')
+    #       filename = "tmp/#{model.name.underscore.tr('/', '__')}.json"
+    #       File.open(filename, 'w+') { |f| f.puts data.to_json }
+    #       print " finished #{filename} in #{Time.now - t} seconds. #{File.size(filename)}"
+    #       publish 'stored', filename
+    #     end
 
-    def fetch
-      Export::Model.interesting_models.each do |model|
-        print "Fetching: #{model}"
-        t = Time.now
-        data = fetch_data(model)
-        print " ... #{data&.length || 0} in #{Time.now - t} seconds\n"
-      end
-    end
+    #     on 'stored' do |filename|
+    #       puts "add to zip: #{filename}"
+    #     end
+    #   end
+    # end
 
-    def on_fetch_error(&block)
-      @on_fetch_error = block
-    end
+    # def ignore(*model)
+    #   @ignore += [*model]
+    # end
 
-    def scope_for(clazz)
-      Export::Model.new(clazz, self).scope
-    end
+    # def fetch
+    #   Export::Model.interesting_models.each do |model|
+    #     print "Fetching: #{model}"
+    #     t = Time.now
+    #     data = fetch_data(model)
+    #     print " ... #{data&.length || 0} in #{Time.now - t} seconds\n"
+    #   end
+    # end
 
-    def fetch_data clazz
-      @exported[clazz.to_s] ||=
-        begin
-          scope = scope_for(clazz)
-          data = scope.to_a
+    # def on_fetch_error(&block)
+    #   @on_fetch_error = block
+    # end
 
-          @broadcast.publish "fetch", clazz, data
+    # def scope_for(clazz)
+    #   Export::Model.new(clazz, self).scope
+    # end
 
-          data
-        rescue
-          callback_failed_fetching_data clazz, $!, $@
-        end
-    end
+    # def fetch_data(clazz)
+    #   @exported[clazz.to_s] ||=
+    #     begin
+    #       scope = scope_for(clazz)
+    #       data = scope.to_a
 
-    def callback_fetched_data model, data
-      @on_fetch_data.inject(data) do |transformed_data, callback|
-        instance_exec [model, transformed_data], callback
-      end
-    end
+    #       @broadcast.publish 'fetch', clazz, data
 
-    def callback_failed_fetching_data( model, error, message)
-      if @on_fetch_error
-        @on_fetch_error.call(model, error, message)
-      else
-        fail "#{model} failed downloading with: #{error} \n #{message.join("\n")}"
-      end
-    end
+    #       data
+    #     rescue
+    #       callback_failed_fetching_data clazz, $ERROR_INFO, $ERROR_POSITION
+    #     end
+    # end
 
-    def process
-      filename = @schema.tr(' ','_').downcase + '.json'
-      puts "Writing: #{filename}"
-      File.open(filename, 'w+') do |file|
-        file.puts fetch.to_json
-      end
-      puts "Finished. #{fetch.values.map(&:size).inject(:+)} records saved"
-    end
+    # def callback_fetched_data(model, data)
+    #   @on_fetch_data.inject(data) do |transformed_data, callback|
+    #     instance_exec [model, transformed_data], callback
+    #   end
+    # end
+
+    # def callback_failed_fetching_data(model, error, message)
+    #   raise "#{model} failed downloading with: #{error} \n #{message.join("\n")}" unless @on_fetch_error
+
+    #   @on_fetch_error.call(model, error, message)
+    # end
+
+    # def process
+    #   filename = @schema.tr(' ', '_').downcase + '.json'
+    #   puts "Writing: #{filename}"
+    #   File.open(filename, 'w+') do |file|
+    #     file.puts fetch.to_json
+    #   end
+    #   puts "Finished. #{fetch.values.map(&:size).inject(:+)} records saved"
+    # end
   end
 end

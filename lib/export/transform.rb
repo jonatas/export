@@ -9,7 +9,6 @@ module Export
   #   ignore :created_at, :updated_at
   # end
   class Transform
-
     attr_accessor :model
     attr_reader :replacements
 

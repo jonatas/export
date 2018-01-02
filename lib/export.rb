@@ -3,13 +3,13 @@ require 'active_support/inflector'
 require 'active_record_union'
 require 'active_record'
 require 'export/transform'
+require 'export/dependency'
 require 'export/model'
 require 'export/dump'
 require 'export/transform_data'
 
 # Allow to export a specific table
 module Export
-
   # @example
   #   Export.transform User do
   #      replace :password, 'password'

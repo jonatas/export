@@ -6,7 +6,7 @@ require 'yaml'
 require 'ffaker'
 require 'support/database_setup'
 
-connection_info = YAML.load_file("config/database.yml")["test"]
+connection_info = YAML.load_file('config/database.yml')['test']
 ActiveRecord::Base.establish_connection(connection_info)
 
 RSpec.configure do |config|

@@ -8,17 +8,16 @@ describe Export::Dump do
 
     Export.dump 'light' do
       model(User) { where(id: User.order(:id).first.id) }
-      on_fetch_error {|clazz,e,m| require 'pry'; binding.pry  }
     end
   end
 
-  include_examples 'database setup'
-
   let(:first_user_id) { User.first.id }
+
+  include_context 'database setup'
 
   describe '#fetch_data' do
     def exported_ids
-      Hash[subject.exported.map{|k,v|[k,v.map{|e|e['id']}]}]
+      Hash[subject.exported.map { |k, v| [k, v.map { |e| e['id'] }] } ]
     end
 
     it do
@@ -41,7 +40,6 @@ describe Export::Dump do
   end
 
   describe '#fetch' do
-
     before { subject.fetch }
 
     it 'works in sequence applying filters' do
@@ -60,10 +58,9 @@ describe Export::Dump do
       commentable = data['Comment'].map(&:commentable)
       expect(commentable.grep(Product).map(&:id) - data['Product'].map(&:id)).to be_empty
       expect(commentable.grep(OrderItem).map(&:id) - data['OrderItem'].map(&:id)).to be_empty
-
     end
 
-    context 'transform data on fetch' do
+    context 'when transforming data on fetch' do
       before do
         subject.fetch
       end

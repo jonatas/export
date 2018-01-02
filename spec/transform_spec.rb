@@ -1,11 +1,10 @@
 require 'spec_helper'
 
 describe Export::Transform do
-
   before do
     described_class.new 'User' do
       replace :password, 'password'
-      replace :email, ->(record) { record.email.gsub(/@.*/,"example.com") }
+      replace :email, ->(record) { record.email.gsub(/@.*/, 'example.com') }
       replace :name, -> { 'Contact Name' }
       ignore :created_at, :updated_at
 
@@ -24,6 +23,4 @@ describe Export::Transform do
         .and have_key(:updated_at)
     end
   end
-
-
 end

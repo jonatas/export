@@ -1,8 +1,7 @@
 require 'spec_helper'
 
 describe Export::TransformData do
-
-  include_examples 'database setup'
+  include_context 'database setup'
 
   before do
     Export.transform User do
@@ -16,7 +15,6 @@ describe Export::TransformData do
       end
     end
   end
-
 
   describe '#process' do
     let(:transform) { described_class.new(User) }
