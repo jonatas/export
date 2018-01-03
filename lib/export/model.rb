@@ -31,7 +31,7 @@ module Export
     end
 
     def scoped?
-      @scope_block || enabled_dependencies.any? { |d| scope_dependency?(d) }
+      @scope_block || enabled_dependencies.any? { |d| dependency_scoped?(d) }
     end
 
     def enabled_dependencies
@@ -47,86 +47,113 @@ module Export
     def scope
       return @scope if defined?(@scope)
 
-      @scope = hard_scope
+      @scope = hard_scope.dup
       soft_dependencies = []
 
       enabled_dependencies.each do |dependency|
-        next unless circular_dependency?(dependency) && dependency.soft?
-        next unless dependency.scoped?
-        next if dependency.polymorphic? # TEMPORARIO
+        if dependency.polymorphic?
+          select = nil
+          dependency.models.each do |model|
+            next unless circular_dependency?(dependency, model) && dependency.soft?
+            next unless model.scoped?
 
-        table = @clazz.arel_table
-        dependency_table = dependency.models.first.clazz.arel_table
-        dependency_table = dependency_table.alias("#{dependency.name}_#{dependency_table.name}") if table == dependency_table
+            query = model.arel_table.from
+            query.projections = [
+              Arel::Nodes::As.new(Arel::Nodes::Quoted.new(model.clazz.name), Arel::Nodes::SqlLiteral.new(:type.to_s)),
+              model.primary_key.as(:id.to_s),
+            ]
 
-        join = table.join(dependency_table, Arel::Nodes::OuterJoin)
-                    .on(dependency_table[dependency.models.first.clazz.primary_key].eq(table[dependency.foreign_key]))
-                    .join_sources
+            select = select ? select.union_all(query) : query
+          end
 
-        @scope = @scope.joins(join)
-        soft_dependencies << [dependency, dependency_table]
+          if select
+            dependencies = Arel::Table.new(dependency.name.to_s.pluralize.to_sym)
+            dependencies_content = Arel::Nodes::As.new(dependencies, select)
+
+            @scope.query.join(dependencies, Arel::Nodes::OuterJoin)
+                        .on(dependencies[:type].eq(arel_table[dependency.foreign_type]).and(dependencies[:id].eq(arel_table[dependency.foreign_key])))
+                        .with(dependencies_content)
+            soft_dependencies << DependencyTable.new(dependency, dependencies)
+          end
+        else
+          next unless circular_dependency?(dependency) && dependency.soft?
+          next unless dependency.models.first.scoped?
+
+          model = dependency.models.first
+          table = model.arel_table
+          table = table.alias("#{dependency.name}_#{table.name}") if table == arel_table
+
+          @scope.query.join(table, Arel::Nodes::OuterJoin)
+                      .on(table[model.clazz.primary_key].eq(arel_table[dependency.foreign_key]))
+          soft_dependencies << DependencyTable.new(dependency, table)
+        end
       end
 
       unless soft_dependencies.empty?
-        fields = @clazz.column_names.clone
-        soft_dependencies.each do |dependency, table|
-          next if dependency.polymorphic? # TEMPORARIO
+        @scope.query.projections = @clazz.column_names.map do |column|
+          info = soft_dependencies.find { |dt| dt.dependency.foreign_key == column }
+          next info.table[info.dependency.models.first.clazz.primary_key].as(info.dependency.foreign_key) if info
 
-          index = fields.index(dependency.foreign_key)
-          fields[index] = table[:id].as(dependency.foreign_key)
+          info = soft_dependencies.find { |dt| dt.dependency.foreign_type == column }
+          next info.table[:type].as(info.dependency.foreign_type) if info
 
-          index = fields.index(dependency.foreign_type)
-          fields[index] = table[:type].as(dependency.foreign_type) if index
+          arel_table[column]
         end
-
-        @scope = @scope.select(*fields)
       end
 
       @scope
     end
 
     def ignore(*args)
-      @ignorable_dependencies.push(*args)
+      @ignorable_dependencies.concat(args)
     end
 
     protected
+
+    delegate :arel_table, to: :clazz
 
     attr_reader :clazz
 
     def hard_scope
       return @hard_scope if defined?(@hard_scope)
 
-      @hard_scope = @scope_block ? @clazz.instance_exec(&@scope_block) : @clazz.all
+      relation = @scope_block ? @clazz.instance_exec(&@scope_block) : @clazz.all
+      @hard_scope = Statement.from_relation(relation)
 
       enabled_dependencies.each do |dependency|
-        next unless scope_dependency?(dependency)
-
         if dependency.polymorphic?
-          table = @clazz.arel_table
-          binds = []
           condition = nil
-
           dependency.models.each do |model|
-            query = model.hard_scope
-            query = query.select(query.arel_attribute(query.klass.primary_key))
+            next unless dependency_scoped?(dependency, model)
 
-            binds.push(*query.bound_attributes)
+            query = model.hard_scope.query.dup
+            query.projections = [model.primary_key]
+
+            @hard_scope.binds.concat(model.hard_scope.binds)
             foreign_condition = Arel::Nodes::Grouping.new(
-              table[dependency.foreign_type].eq(model.clazz.name).and(table[dependency.foreign_key].in(query.arel))
+              arel_table[dependency.foreign_type].eq(model.clazz.name).and(arel_table[dependency.foreign_key].in(query))
             )
-
             condition = condition ? condition.or(foreign_condition) : foreign_condition
           end
 
-          @hard_scope = @hard_scope.where(Arel::Nodes::Grouping.new(condition))
-          @hard_scope.where_clause.binds.push(*binds)
-          @hard_scope.to_sql
+          @hard_scope.query.where(Arel::Nodes::Grouping.new(condition)) if condition
         else
-          @hard_scope = @hard_scope.where(dependency.name => dependency.models.first.hard_scope)
+          next unless dependency_scoped?(dependency)
+
+          model = dependency.models.first
+          query = model.hard_scope.query.dup
+          query.projections = [model.primary_key]
+
+          @hard_scope.query.where(arel_table[dependency.foreign_key].in(query))
+          @hard_scope.binds.concat(model.hard_scope.binds)
         end
       end
 
       @hard_scope
+    end
+
+    def primary_key
+      arel_table[@clazz.primary_key]
     end
 
     private
@@ -145,19 +172,19 @@ module Export
         models = []
 
         block = proc do |dependency, path = []|
-          path << dependency
-
           dependency.models.each do |model|
-            if model == self
-              raise CircularDependencyError, "Circular dependency detected in #{self.clazz.name}##{path.first.name}." unless path.any?(&:soft?)
+            path << CircularDependencyPathItem.new(dependency, model)
 
-              name = path.first.name
-              name += DEPENDENCY_SEPARATOR + model.clazz.name if dependency.polymorphic?
+            if model == self
+              raise CircularDependencyError, "Circular dependency detected in #{self.clazz.name}##{path.first.dependency.name}." unless path.first.dependency.polymorphic? || path.any? { |i| i.dependency.soft? }
+
+              name = path.first.dependency.name
+              name = name.to_s + DEPENDENCY_SEPARATOR + path.first.model.clazz.name if path.first.dependency.polymorphic?
 
               @circular_dependencies << name
             elsif !models.include?(model)
               models << model
-              model.enabled_dependencies.each { |d| block.call d, path }
+              model.enabled_dependencies.each { |d| block.call d, path.dup }
             end
           end
         end
@@ -168,17 +195,18 @@ module Export
       @circular_dependencies
     end
 
-    def scope_dependency?(dependency)
-      return false if circular_dependency?(dependency) && dependency.soft?
-      return false unless dependency.scoped?
+    def dependency_scoped?(dependency, model = nil)
+      return false if circular_dependency?(dependency, model) && (dependency.soft? || dependency.polymorphic?)
 
-      true
+      models = model ? [model] : dependency.models
+      models.any?(&:scoped?)
     end
 
-    def circular_dependency?(dependency)
+    def circular_dependency?(dependency, model = nil)
       if dependency.polymorphic?
-        return true if dependency.models.any? do |model|
-          circular_dependencies.include?(dependency.name.to_s + DEPENDENCY_SEPARATOR + model.clazz.name)
+        models = model ? [model] : dependency.models
+        return true if models.any? do |dependency_model|
+          circular_dependencies.include?(dependency.name.to_s + DEPENDENCY_SEPARATOR + dependency_model.clazz.name)
         end
       else
         return true if circular_dependencies.include?(dependency.name) # rubocop:disable Style/IfInsideElse
@@ -186,44 +214,10 @@ module Export
 
       false
     end
-
-    # def add_polymorphic_dependencies
-    #   current_scope = @scope
-    #   polymorphic_dependencies.each do |polymorphic_association, associations|
-    #     next unless requires_declare_scope?(associations)
-    #     associations.each_with_index do |association_class,i|
-    #       association_scope = self.class.new(association_class, @dump).scope
-    #       condition = current_scope.where(polymorphic_association => association_scope)
-    #       if i == 0
-    #         @scope = condition
-    #       else
-    #         @scope = @scope.union condition
-    #       end
-    #     end
-    #   end
-    # end
-
-    # def polymorphic_dependencies
-    #   @polymorphic_dependencies ||=
-    #     @clazz.reflections.select do |name, reflection|
-    #       reflection.is_a?(ActiveRecord::Reflection::BelongsToReflection) &&
-    #       !@clazz.column_for_attribute(reflection.foreign_key).null &&
-    #       reflection.options && reflection.options[:polymorphic] == true
-    #     end
-    #       .values.map(&:name).inject({}) do |acc, name|
-    #       assocs = polymorphic_associates_with(name)
-    #       acc[name] = assocs if assocs.any?
-    #       acc
-    #     end
-    # end
-
-    # def polymorphic_associates_with(polymorphic_model)
-    #   (self.class.interesting_models - [@clazz]).select do |clazz|
-    #     reflection = clazz.reflections[@clazz.table_name]
-    #     reflection && reflection.options[:as] == polymorphic_model
-    #   end.map(&:name).uniq.map(&:safe_constantize)
-    # end
   end
 
   class CircularDependencyError < StandardError; end
+
+  CircularDependencyPathItem = Struct.new(:dependency, :model)
+  DependencyTable = Struct.new(:dependency, :table)
 end

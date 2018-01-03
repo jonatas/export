@@ -5,10 +5,6 @@ module Export
 
     attr_reader :models
 
-    def scoped?
-      @models.any?(&:scoped?)
-    end
-
     def polymorphic?
       @reflection.polymorphic? == true
     end

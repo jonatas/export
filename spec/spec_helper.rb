@@ -5,6 +5,7 @@ require 'active_record'
 require 'yaml'
 require 'ffaker'
 require 'support/database_setup'
+require 'support/statement_matcher'
 
 connection_info = YAML.load_file('config/database.yml')['test']
 ActiveRecord::Base.establish_connection(connection_info)

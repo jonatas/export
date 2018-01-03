@@ -146,20 +146,31 @@ RSpec.shared_context 'database creation' do # rubocop:disable RSpec/ContextWordi
     end
 
     class ActiveRecord::Relation
-      alias old_inspect inspect
-      def inspect
-        self.to_sql.truncate(50)
+      alias old_pretty_print pretty_print
+      def pretty_print(q)
+        q.text(self.to_sql)
+      end
+    end
+
+    class Arel::SelectManager
+      alias old_pretty_print pretty_print
+      def pretty_print(q)
+        q.text(self.to_sql)
       end
     end
   end
 
   after do
     class ActiveRecord::Relation
-      alias inspect old_inspect
+      alias pretty_print old_pretty_print
+    end
+
+    class Arel::SelectManager
+      alias pretty_print old_pretty_print
     end
 
     CreateSchema.new.down
-    ActiveRecord::Migration.verbose = false
+    ActiveRecord::Migration.verbose = true
   end
 end
 
@@ -200,7 +211,7 @@ RSpec.shared_context 'database seed' do |people: 2, admins: 1, organizations: 1,
     end
 
     branches.times do
-      Branch.create name: FFaker::Name.name,
+      Branch.create code: FFaker::Name.name,
                     organization_id: Organization.random.id
     end
 
@@ -217,7 +228,7 @@ RSpec.shared_context 'database seed' do |people: 2, admins: 1, organizations: 1,
 
     orders.times do |i|
       Order.create user_id: (i == 0 ? User.order(:id).first.id : User.random.id),
-                   contact: Contact.random.id
+                   contact: Contact.random
     end
 
     orders_items.times do
