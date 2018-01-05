@@ -39,7 +39,7 @@ module Export
       model_for(clazz).scope_by(&block)
     end
 
-    # def setup_broadcast # rubocop:disable Metrics/AbcSize
+    # def setup_broadcast
     #   Broadcast.new do
     #     on 'fetch' do |model, data|
     #       puts "Fetched: #{model} with #{data&.length} records"

@@ -1,44 +1,53 @@
 RSpec::Matchers.define :eq_statement do |expected|
   match do |actual|
-    return ArgumentError, "expected that #{actual} would be a #{Export::Statement}" unless actual.is_a?(Export::Statement)
+    begin
+      raise ArgumentError, "expected that #{actual} would be a #{Export::Statement}" unless actual.is_a?(Export::Statement)
 
-    if expected.is_a?(ActiveRecord::Relation)
-      raise ArgumentError, 'cannot specify binds when expecting relation' if binds
+      if expected.is_a?(ActiveRecord::Relation)
+        raise ArgumentError, 'cannot specify binds when expecting relation' if binds
 
-      expected = Export::Statement.from_relation(expected)
-    elsif expected.is_a?(Arel::SelectManager)
-      expected = Export::Statement.new(expected, binds)
+        expected = Export::Statement.from_relation(expected)
+      elsif expected.is_a?(Arel::SelectManager)
+        expected = Export::Statement.new(expected, database_binds)
+      end
+
+      actual_sql = actual.to_sql
+      expected_sql = expected.to_sql
+
+      raise 'expected that actual query would not have pending binds' if actual_sql.include?('?')
+      raise 'expected that expected query would not have pending binds' if expected_sql.include?('?')
+
+      if actual_sql != expected_sql
+        raise 'expected that query would match' unless actual.manager.to_sql == expected.manager.to_sql
+        raise 'expected that binds would match'
+      end
+
+      true
+    rescue e
+      @failure_message = e.message
+
+      false
     end
-
-    actual.query.to_sql == expected.query.to_sql && compare_binds(actual.binds, expected.binds)
   end
 
   chain :and_bind, :binds
   diffable
 
-  failure_message do |actual|
-    if actual.query != expected.query
-      "expected that #{actual.query.to_sql.truncate(50)} would be #{expected.query.to_sql.truncate(50)}"
-    else
-      "expected that #{actual.binds} would be #{expected.binds}"
-    end
+  description do
+    "scope with #{expected.to_sql.truncate(100)}"
   end
 
-  def compare_binds(actual, expected)
-    return false if !actual.is_a?(Array) || !expected.is_a?(Array)
-    return false if actual.count != expected.count
+  failure_message do
+    @failure_message
+  end
 
-    actual.each_with_index do |actual_bind, index|
-      expected_bind = expected[index]
-
-      actual_bind = actual_bind.value_for_database if actual_bind.respond_to?(:value_for_database)
-      expected_bind = expected_bind.value_for_database if actual_bind.respond_to?(:value_for_database)
-
-      return false unless actual_bind == expected_bind
+  def database_binds
+    binds.map do |bind|
+      bind.respond_to?(:value_for_database) ? bind : DatabaseBind.new(bind)
     end
-
-    true
   end
 end
 
 RSpec::Matchers.alias_matcher :query, :eq_statement
+
+DatabaseBind = Struct.new(:value_for_database)

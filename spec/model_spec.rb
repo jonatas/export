@@ -222,21 +222,25 @@ describe Export::Model do
         end
 
         it do
-          categories = Category.arel_table
-          parent_categories = categories.alias(:parent_categories)
+          categories_query = Category.select(
+            Category.arel_table[:id].as('id')
+          ).limit(3)
+          parents = Arel::Table.new(:parents)
+          parents_content = Arel::Nodes::As.new(parents, Arel::Nodes::Grouping.new(categories_query.ast))
 
-          join = categories.join(parent_categories, Arel::Nodes::OuterJoin)
-                           .on(parent_categories[:id].eq(categories[:parent_id]))
-                           .join_sources
+          categories = Category.arel_table.from
+          categories.take(Arel::Nodes::BindParam.new)
+          categories.projections = [
+            categories.source.left[:id],
+            parents[:id].as('parent_id'),
+            categories.source.left[:label],
+            categories.source.left[:description]
+          ]
+          categories.join(parents, Arel::Nodes::OuterJoin)
+                    .on(parents[:id].eq(categories.source.left[:parent_id]))
+                    .with(parents_content)
 
-          is_expected.to query(
-            Category.select(
-              :id,
-              parent_categories[:id].as('parent_id'),
-              :label,
-              :description
-            ).joins(join).limit(3)
-          )
+          is_expected.to query(categories).and_bind([3, 3])
         end
       end
     end
@@ -303,14 +307,30 @@ describe Export::Model do
           end
 
           it do
-            is_expected.to query(
-              User.select(
-                :id,
-                :email,
-                :name,
-                Role.arel_table[:id].as('current_role_id')
-              ).left_joins(:current_role).limit(3)
-            )
+            roles_users = User.arel_table.from
+            roles_users.take(Arel::Nodes::BindParam.new)
+            roles_users.projections = [roles_users.source.left[:id]]
+
+            roles = Role.arel_table.from
+            roles.projections = [roles.source.left[:id].as('id')]
+            roles.where(roles.source.left[:user_id].in(roles_users))
+
+            current_roles = Arel::Table.new(:current_roles)
+            current_roles_content = Arel::Nodes::As.new(current_roles, Arel::Nodes::Grouping.new(roles.ast))
+
+            users = User.arel_table.from
+            users.take(Arel::Nodes::BindParam.new)
+            users.projections = [
+              users.source.left[:id],
+              users.source.left[:email],
+              users.source.left[:name],
+              current_roles[:id].as('current_role_id')
+            ]
+            users.join(current_roles, Arel::Nodes::OuterJoin)
+                 .on(current_roles[:id].eq(users.source.left[:current_role_id]))
+                 .with(current_roles_content)
+
+            is_expected.to query(users).and_bind([3, 3])
           end
         end
 
@@ -320,14 +340,24 @@ describe Export::Model do
           end
 
           it do
-            is_expected.to query(
-              User.select(
-                :id,
-                :email,
-                :name,
-                Role.arel_table[:id].as('current_role_id')
-              ).left_joins(:current_role)
-            )
+            roles_query = Role.select(
+              Role.arel_table[:id].as('id')
+            ).where(id: 1)
+            current_roles = Arel::Table.new(:current_roles)
+            current_roles_content = Arel::Nodes::As.new(current_roles, Arel::Nodes::Grouping.new(roles_query.ast))
+
+            users = User.arel_table.from
+            users.projections = [
+              users.source.left[:id],
+              users.source.left[:email],
+              users.source.left[:name],
+              current_roles[:id].as('current_role_id')
+            ]
+            users.join(current_roles, Arel::Nodes::OuterJoin)
+                 .on(current_roles[:id].eq(users.source.left[:current_role_id]))
+                 .with(current_roles_content)
+
+            is_expected.to query(users).and_bind([1])
           end
         end
 
@@ -340,14 +370,31 @@ describe Export::Model do
           end
 
           it do
-            is_expected.to query(
-              User.select(
-                :id,
-                :email,
-                :name,
-                Role.arel_table[:id].as('current_role_id')
-              ).left_joins(:current_role).where(id: 2)
-            )
+            roles_users = User.arel_table.from
+            roles_users.where(roles_users.source.left[:id].eq(Arel::Nodes::BindParam.new))
+            roles_users.projections = [roles_users.source.left[:id]]
+
+            roles = Role.arel_table.from
+            roles.projections = [roles.source.left[:id].as('id')]
+            roles.where(roles.source.left[:id].eq(Arel::Nodes::BindParam.new))
+            roles.where(roles.source.left[:user_id].in(roles_users))
+
+            current_roles = Arel::Table.new(:current_roles)
+            current_roles_content = Arel::Nodes::As.new(current_roles, Arel::Nodes::Grouping.new(roles.ast))
+
+            users = User.arel_table.from
+            users.projections = [
+              users.source.left[:id],
+              users.source.left[:email],
+              users.source.left[:name],
+              current_roles[:id].as('current_role_id')
+            ]
+            users.where(users.source.left[:id].eq(Arel::Nodes::BindParam.new))
+            users.join(current_roles, Arel::Nodes::OuterJoin)
+                 .on(current_roles[:id].eq(users.source.left[:current_role_id]))
+                 .with(current_roles_content)
+
+            is_expected.to query(users).and_bind([1, 2, 2])
           end
         end
       end
@@ -470,14 +517,34 @@ describe Export::Model do
           end
 
           it do
-            is_expected.to query(
-              Company.select(
-                :id,
-                :organization_id,
-                :name,
-                Order.arel_table[:id].as('last_order_id')
-              ).left_joins(:last_order).limit(3)
-            )
+            orders_companies = Company.arel_table.from
+            orders_companies.take(Arel::Nodes::BindParam.new)
+            orders_companies.projections = [orders_companies.source.left[:id]]
+
+            orders_contacts = Contact.arel_table.from
+            orders_contacts.projections = [orders_contacts.source.left[:id]]
+            orders_contacts.where(orders_contacts.source.left[:company_id].in(orders_companies))
+
+            orders = Order.arel_table.from
+            orders.projections = [orders.source.left[:id].as('id')]
+            orders.where(orders.source.left[:contact_id].in(orders_contacts))
+
+            last_orders = Arel::Table.new(:last_orders)
+            last_orders_content = Arel::Nodes::As.new(last_orders, Arel::Nodes::Grouping.new(orders.ast))
+
+            companies = Company.arel_table.from
+            companies.projections = [
+              companies.source.left[:id],
+              companies.source.left[:organization_id],
+              companies.source.left[:name],
+              last_orders[:id].as('last_order_id')
+            ]
+            companies.take(Arel::Nodes::BindParam.new)
+            companies.join(last_orders, Arel::Nodes::OuterJoin)
+                     .on(last_orders[:id].eq(companies.source.left[:last_order_id]))
+                     .with(last_orders_content)
+
+            is_expected.to query(companies).and_bind([3, 3])
           end
         end
 
@@ -487,14 +554,25 @@ describe Export::Model do
           end
 
           it do
-            is_expected.to query(
-              Company.select(
-                :id,
-                :organization_id,
-                :name,
-                Order.arel_table[:id].as('last_order_id')
-              ).left_joins(:last_order)
-            )
+            orders = Order.arel_table.from
+            orders.projections = [orders.source.left[:id].as('id')]
+            orders.where(orders.source.left[:id].eq(Arel::Nodes::BindParam.new))
+
+            last_orders = Arel::Table.new(:last_orders)
+            last_orders_content = Arel::Nodes::As.new(last_orders, Arel::Nodes::Grouping.new(orders.ast))
+
+            companies = Company.arel_table.from
+            companies.projections = [
+              companies.source.left[:id],
+              companies.source.left[:organization_id],
+              companies.source.left[:name],
+              last_orders[:id].as('last_order_id')
+            ]
+            companies.join(last_orders, Arel::Nodes::OuterJoin)
+                     .on(last_orders[:id].eq(companies.source.left[:last_order_id]))
+                     .with(last_orders_content)
+
+            is_expected.to query(companies).and_bind([1])
           end
         end
 
@@ -508,14 +586,36 @@ describe Export::Model do
           end
 
           it do
-            is_expected.to query(
-              Company.select(
-                :id,
-                :organization_id,
-                :name,
-                Order.arel_table[:id].as('last_order_id')
-              ).left_joins(:last_order).where(id: 3)
-            )
+            orders_companies = Company.arel_table.from
+            orders_companies.where(orders_companies.source.left[:id].eq(Arel::Nodes::BindParam.new))
+            orders_companies.projections = [orders_companies.source.left[:id]]
+
+            orders_contacts = Contact.arel_table.from
+            orders_contacts.projections = [orders_contacts.source.left[:id]]
+            orders_contacts.where(orders_contacts.source.left[:id].eq(Arel::Nodes::BindParam.new))
+            orders_contacts.where(orders_contacts.source.left[:company_id].in(orders_companies))
+
+            orders = Order.arel_table.from
+            orders.projections = [orders.source.left[:id].as('id')]
+            orders.where(orders.source.left[:id].eq(Arel::Nodes::BindParam.new))
+            orders.where(orders.source.left[:contact_id].in(orders_contacts))
+
+            last_orders = Arel::Table.new(:last_orders)
+            last_orders_content = Arel::Nodes::As.new(last_orders, Arel::Nodes::Grouping.new(orders.ast))
+
+            companies = Company.arel_table.from
+            companies.projections = [
+              companies.source.left[:id],
+              companies.source.left[:organization_id],
+              companies.source.left[:name],
+              last_orders[:id].as('last_order_id')
+            ]
+            companies.where(companies.source.left[:id].eq(Arel::Nodes::BindParam.new))
+            companies.join(last_orders, Arel::Nodes::OuterJoin)
+                     .on(last_orders[:id].eq(companies.source.left[:last_order_id]))
+                     .with(last_orders_content)
+
+            is_expected.to query(companies).and_bind([2, 1, 3, 3])
           end
         end
       end
@@ -569,23 +669,33 @@ describe Export::Model do
           end
 
           it do
-            table = Comment.arel_table
-            organizations_query = Organization.where(id: 1).select(:id)
-            products_query = Product.where(id: 2).select(:id)
+            organizations = Organization.arel_table.from
+            organizations.projections = [
+              Arel::Nodes::As.new(Arel::Nodes::Quoted.new('Organization'), Arel::Nodes::SqlLiteral.new('type')),
+              organizations.source.left[:id]
+            ]
+            organizations.where(organizations.source.left[:id].eq(Arel::Nodes::BindParam.new))
 
-            is_expected.to query(
-              Comment.where(
-                Arel::Nodes::Grouping.new(
-                  Arel::Nodes::Grouping.new(
-                    table[:commentable_type].eq('Organization').and(table[:commentable_id].in(organizations_query.arel))
-                  ).or(
-                    Arel::Nodes::Grouping.new(
-                      table[:commentable_type].eq('Product').and(table[:commentable_id].in(products_query.arel))
-                    )
-                  )
-                )
-              ).tap { |q| q.where_clause.binds.concat(organizations_query.bound_attributes).concat(products_query.bound_attributes) }
-            )
+            products = Product.arel_table.from
+            products.projections = [
+              Arel::Nodes::As.new(Arel::Nodes::Quoted.new('Product'), Arel::Nodes::SqlLiteral.new('type')),
+              products.source.left[:id]
+            ]
+            products.where(products.source.left[:id].eq(Arel::Nodes::BindParam.new))
+
+            commentables = Arel::Table.new(:commentables).from
+            commentables.projections = [
+              commentables.source.left[:type],
+              commentables.source.left[:id]
+            ]
+            commentables_content = Arel::Nodes::As.new(commentables, Arel::Nodes::Grouping.new(organizations.union(:all, products)))
+
+            comments = Comment.arel_table.from
+            comments.project(comments.source.left[Arel::Nodes::SqlLiteral.new('*')])
+            comments.where(Arel::Nodes::Grouping.new([comments.source.left[:commentable_type], comments.source.left[:commentable_id]]).in(commentables))
+                    .with(commentables_content)
+
+            is_expected.to query(comments).and_bind([1, 2])
           end
         end
 
@@ -598,19 +708,27 @@ describe Export::Model do
           end
 
           it do
-            table = Comment.arel_table
-            organizations_query = Organization.where(id: 1).select(:id)
+            organizations = Organization.arel_table.from
+            organizations.projections = [
+              Arel::Nodes::As.new(Arel::Nodes::Quoted.new('Organization'), Arel::Nodes::SqlLiteral.new('type')),
+              organizations.source.left[:id]
+            ]
+            organizations.where(organizations.source.left[:id].eq(Arel::Nodes::BindParam.new))
 
-            is_expected.to query(
-              Comment.where(id: 2)
-                     .where(
-                       Arel::Nodes::Grouping.new(
-                         Arel::Nodes::Grouping.new(
-                           table[:commentable_type].eq('Organization').and(table[:commentable_id].in(organizations_query.arel))
-                         )
-                       )
-                     ).tap { |q| q.where_clause.binds.concat(organizations_query.bound_attributes) }
-            )
+            commentables = Arel::Table.new(:commentables).from
+            commentables.projections = [
+              commentables.source.left[:type],
+              commentables.source.left[:id]
+            ]
+            commentables_content = Arel::Nodes::As.new(commentables, Arel::Nodes::Grouping.new(organizations.ast))
+
+            comments = Comment.arel_table.from
+            comments.project(comments.source.left[Arel::Nodes::SqlLiteral.new('*')])
+            comments.where(comments.source.left[:id].eq(Arel::Nodes::BindParam.new))
+            comments.where(Arel::Nodes::Grouping.new([comments.source.left[:commentable_type], comments.source.left[:commentable_id]]).in(commentables))
+                    .with(commentables_content)
+
+            is_expected.to query(comments).and_bind([1, 2])
           end
         end
       end
@@ -638,27 +756,10 @@ describe Export::Model do
 
         context 'when a scope is defined for the subject' do
           before do
-            dump.scope(Comment) { limit(3) }
+            dump.scope(Comment) { where(id: 2) }
           end
 
-          xit do
-            comments = Comment.arel_table
-            commentable_comments = comments.alias(:commentable_comments)
-
-            join = comments.join(commentable_comments, Arel::Nodes::OuterJoin)
-                           .on(commentable_comments[:id].eq(comments[:commentable_id]))
-                           .join_sources
-
-            is_expected.to eq(
-              Comment.select(
-                :id,
-                :description,
-                :role,
-                commentable_comments[:commentable_id].as('commentable_id'),
-                commentable_comments[:commentable_type].as('commentable_type')
-              ).joins(join).limit(3)
-            )
-          end
+          it { expect { subject }.to raise_error(Export::CircularDependencyError) }
         end
       end
 
@@ -725,18 +826,26 @@ describe Export::Model do
             end
 
             it do
-              table = Comment.arel_table
-              orders_query = Order.where(id: 1).select(:id)
+              orders = Order.arel_table.from
+              orders.projections = [
+                Arel::Nodes::As.new(Arel::Nodes::Quoted.new('Order'), Arel::Nodes::SqlLiteral.new('type')),
+                orders.source.left[:id]
+              ]
+              orders.where(orders.source.left[:id].eq(Arel::Nodes::BindParam.new))
 
-              is_expected.to query(
-                Comment.where(
-                  Arel::Nodes::Grouping.new(
-                    Arel::Nodes::Grouping.new(
-                      table[:commentable_type].eq('Order').and(table[:commentable_id].in(orders_query.arel))
-                    )
-                  )
-                ).tap { |q| q.where_clause.binds.concat(orders_query.bound_attributes) }
-              )
+              commentables = Arel::Table.new(:commentables).from
+              commentables.projections = [
+                commentables.source.left[:type],
+                commentables.source.left[:id]
+              ]
+              commentables_content = Arel::Nodes::As.new(commentables, Arel::Nodes::Grouping.new(orders.ast))
+
+              comments = Comment.arel_table.from
+              comments.project(comments.source.left[Arel::Nodes::SqlLiteral.new('*')])
+              comments.where(Arel::Nodes::Grouping.new([comments.source.left[:commentable_type], comments.source.left[:commentable_id]]).in(commentables))
+                      .with(commentables_content)
+
+              is_expected.to query(comments).and_bind([1])
             end
           end
 
@@ -749,19 +858,27 @@ describe Export::Model do
             end
 
             it do
-              table = Comment.arel_table
-              orders_query = Order.where(id: 1).select(:id)
+              orders = Order.arel_table.from
+              orders.projections = [
+                Arel::Nodes::As.new(Arel::Nodes::Quoted.new('Order'), Arel::Nodes::SqlLiteral.new('type')),
+                orders.source.left[:id]
+              ]
+              orders.where(orders.source.left[:id].eq(Arel::Nodes::BindParam.new))
 
-              is_expected.to query(
-                Comment.where(id: 2)
-                       .where(
-                         Arel::Nodes::Grouping.new(
-                           Arel::Nodes::Grouping.new(
-                             table[:commentable_type].eq('Order').and(table[:commentable_id].in(orders_query.arel))
-                           )
-                         )
-                       ).tap { |q| q.where_clause.binds.concat(orders_query.bound_attributes) }
-              )
+              commentables = Arel::Table.new(:commentables).from
+              commentables.projections = [
+                commentables.source.left[:type],
+                commentables.source.left[:id]
+              ]
+              commentables_content = Arel::Nodes::As.new(commentables, Arel::Nodes::Grouping.new(orders.ast))
+
+              comments = Comment.arel_table.from
+              comments.project(comments.source.left[Arel::Nodes::SqlLiteral.new('*')])
+              comments.where(comments.source.left[:id].eq(Arel::Nodes::BindParam.new))
+              comments.where(Arel::Nodes::Grouping.new([comments.source.left[:commentable_type], comments.source.left[:commentable_id]]).in(commentables))
+                      .with(commentables_content)
+
+              is_expected.to query(comments).and_bind([1, 2])
             end
           end
         end
@@ -841,12 +958,19 @@ describe Export::Model do
             end
 
             it do
-              orders_query = Order.select(
+              orders_comments = Comment.arel_table.from
+              orders_comments.projections = [orders_comments.source.left[:id]]
+              orders_comments.take(Arel::Nodes::BindParam.new)
+
+              orders = Order.arel_table.from
+              orders.projections = [
                 Arel::Nodes::As.new(Arel::Nodes::Quoted.new('Order'), Arel::Nodes::SqlLiteral.new('type')),
-                Order.arel_table[:id].as('id')
-              )
+                orders.source.left[:id].as('id')
+              ]
+              orders.where(orders.source.left[:last_comment_id].in(orders_comments))
+
               commentables = Arel::Table.new(:commentables)
-              commentables_content = Arel::Nodes::As.new(commentables, orders_query.arel)
+              commentables_content = Arel::Nodes::As.new(commentables, Arel::Nodes::Grouping.new(orders.ast))
 
               comments = Comment.arel_table.from
               comments.take(Arel::Nodes::BindParam.new)
@@ -861,46 +985,82 @@ describe Export::Model do
                       .on(commentables[:type].eq(comments.source.left[:commentable_type]).and(commentables[:id].eq(comments.source.left[:commentable_id])))
                       .with(commentables_content)
 
-              is_expected.to query(comments).and_bind([3])
+              is_expected.to query(comments).and_bind([3, 3])
             end
           end
 
-        #   context 'when a scope is defined for a dependency' do
-        #     before do
-        #       dump.scope(Role) { where(id: 1) }
-        #     end
+          context 'when a scope is defined for a dependency' do
+            before do
+              dump.scope(Order) { where(id: 1) }
+            end
 
-        #     it do
-        #       is_expected.to eq(
-        #         User.select(
-        #           :id,
-        #           :email,
-        #           :name,
-        #           Role.arel_table[:id].as('current_role_id')
-        #         ).left_joins(:current_role)
-        #       )
-        #     end
-        #   end
+            it do
+              orders = Order.arel_table.from
+              orders.projections = [
+                Arel::Nodes::As.new(Arel::Nodes::Quoted.new('Order'), Arel::Nodes::SqlLiteral.new('type')),
+                orders.source.left[:id].as('id')
+              ]
+              orders.where(orders.source.left[:id].eq(Arel::Nodes::BindParam.new))
 
-        #   context 'when a scope is defined for both the subject and a dependency' do
-        #     before do
-        #       dump.config do
-        #         scope(User) { where(id: 2) }
-        #         scope(Role) { where(id: 1) }
-        #       end
-        #     end
+              commentables = Arel::Table.new(:commentables)
+              commentables_content = Arel::Nodes::As.new(commentables, Arel::Nodes::Grouping.new(orders.ast))
 
-        #     it do
-        #       is_expected.to eq(
-        #         User.select(
-        #           :id,
-        #           :email,
-        #           :name,
-        #           Role.arel_table[:id].as('current_role_id')
-        #         ).left_joins(:current_role).where(id: 2)
-        #       )
-        #     end
-        #   end
+              comments = Comment.arel_table.from
+              comments.projections = [
+                comments.source.left[:id],
+                comments.source.left[:description],
+                comments.source.left[:role_id],
+                commentables[:type].as('commentable_type'),
+                commentables[:id].as('commentable_id')
+              ]
+              comments.join(commentables, Arel::Nodes::OuterJoin)
+                      .on(commentables[:type].eq(comments.source.left[:commentable_type]).and(commentables[:id].eq(comments.source.left[:commentable_id])))
+                      .with(commentables_content)
+
+              is_expected.to query(comments).and_bind([1])
+            end
+          end
+
+          context 'when a scope is defined for both the subject and a dependency' do
+            before do
+              dump.config do
+                scope(Comment) { where(id: 2) }
+                scope(Order) { where(id: 1) }
+              end
+            end
+
+            it do
+              orders_comments = Comment.arel_table.from
+              orders_comments.projections = [orders_comments.source.left[:id]]
+              orders_comments.where(orders_comments.source.left[:id].eq(Arel::Nodes::BindParam.new))
+
+              orders = Order.arel_table.from
+              orders.projections = [
+                Arel::Nodes::As.new(Arel::Nodes::Quoted.new('Order'), Arel::Nodes::SqlLiteral.new('type')),
+                orders.source.left[:id].as('id')
+              ]
+              orders.where(orders.source.left[:id].eq(Arel::Nodes::BindParam.new))
+              orders.where(orders.source.left[:last_comment_id].in(orders_comments))
+
+              commentables = Arel::Table.new(:commentables)
+              commentables_content = Arel::Nodes::As.new(commentables, Arel::Nodes::Grouping.new(orders.ast))
+
+              comments = Comment.arel_table.from
+              comments.projections = [
+                comments.source.left[:id],
+                comments.source.left[:description],
+                comments.source.left[:role_id],
+                commentables[:type].as('commentable_type'),
+                commentables[:id].as('commentable_id')
+              ]
+              comments.where(comments.source.left[:id].eq(Arel::Nodes::BindParam.new))
+              comments.join(commentables, Arel::Nodes::OuterJoin)
+                      .on(commentables[:type].eq(comments.source.left[:commentable_type]).and(commentables[:id].eq(comments.source.left[:commentable_id])))
+                      .with(commentables_content)
+
+              is_expected.to query(comments).and_bind([1, 2, 2])
+            end
+          end
         end
       end
     end

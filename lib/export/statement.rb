@@ -1,29 +1,29 @@
 module Export
   # Represents the query of an exported model
   class Statement
-    attr_reader :query
+    attr_reader :manager
     attr_reader :binds
 
     def self.from_relation(relation)
       self.new(relation.arel, relation.bound_attributes)
     end
 
-    def initialize(query, binds = [])
-      raise ArgumentError unless query
+    def initialize(manager, binds = [])
+      raise ArgumentError unless manager
 
-      @query = query
+      @manager = manager
       @binds = binds
     end
 
-    def initialize_copy other
-      @query = other.query.dup
+    def initialize_copy(other)
+      @manager = other.manager.dup
       @binds = other.binds.dup
     end
 
     def to_sql
       connection = ActiveRecord::Base.connection
       connection.unprepared_statement do
-        connection.to_sql(@query, @binds)
+        connection.to_sql(@manager, @binds)
       end
     end
 

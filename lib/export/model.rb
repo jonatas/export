@@ -51,46 +51,56 @@ module Export
       soft_dependencies = []
 
       enabled_dependencies.each do |dependency|
+        binds = nil
+        manager = nil
+
         if dependency.polymorphic?
-          select = nil
           dependency.models.each do |model|
             next unless circular_dependency?(dependency, model) && dependency.soft?
             next unless model.scoped?
 
-            query = model.arel_table.from
-            query.projections = [
+            model_manager = model.hard_scope.manager.dup
+            model_manager.projections = [
               Arel::Nodes::As.new(Arel::Nodes::Quoted.new(model.clazz.name), Arel::Nodes::SqlLiteral.new(:type.to_s)),
-              model.primary_key.as(:id.to_s),
+              model.primary_key.as(:id.to_s)
             ]
 
-            select = select ? select.union_all(query) : query
-          end
-
-          if select
-            dependencies = Arel::Table.new(dependency.name.to_s.pluralize.to_sym)
-            dependencies_content = Arel::Nodes::As.new(dependencies, select)
-
-            @scope.query.join(dependencies, Arel::Nodes::OuterJoin)
-                        .on(dependencies[:type].eq(arel_table[dependency.foreign_type]).and(dependencies[:id].eq(arel_table[dependency.foreign_key])))
-                        .with(dependencies_content)
-            soft_dependencies << DependencyTable.new(dependency, dependencies)
+            if manager
+              binds.concat(model.hard_scope.binds)
+              manager.union(:all, model_manager)
+            else
+              binds = model.hard_scope.binds
+              manager = model_manager
+            end
           end
         else
           next unless circular_dependency?(dependency) && dependency.soft?
           next unless dependency.models.first.scoped?
 
           model = dependency.models.first
-          table = model.arel_table
-          table = table.alias("#{dependency.name}_#{table.name}") if table == arel_table
-
-          @scope.query.join(table, Arel::Nodes::OuterJoin)
-                      .on(table[model.clazz.primary_key].eq(arel_table[dependency.foreign_key]))
-          soft_dependencies << DependencyTable.new(dependency, table)
+          binds = model.hard_scope.binds
+          manager = model.hard_scope.manager.dup
+          manager.projections = [model.primary_key.as(:id.to_s)]
         end
+
+        next unless manager
+
+        dependencies = Arel::Table.new(dependency.name.to_s.pluralize.to_sym)
+        dependencies_content = Arel::Nodes::As.new(dependencies, Arel::Nodes::Grouping.new(manager.respond_to?(:ast) ? manager.ast : manager))
+
+        on = dependencies[:id].eq(arel_table[dependency.foreign_key])
+        on = dependencies[:type].eq(arel_table[dependency.foreign_type]).and(on) if dependency.polymorphic?
+
+        @scope.manager
+              .join(dependencies, Arel::Nodes::OuterJoin)
+              .on(on)
+              .with(dependencies_content)
+        @scope.binds.unshift(*binds)
+        soft_dependencies << DependencyTable.new(dependency, dependencies)
       end
 
       unless soft_dependencies.empty?
-        @scope.query.projections = @clazz.column_names.map do |column|
+        @scope.manager.projections = @clazz.column_names.map do |column|
           info = soft_dependencies.find { |dt| dt.dependency.foreign_key == column }
           next info.table[info.dependency.models.first.clazz.primary_key].as(info.dependency.foreign_key) if info
 
@@ -122,29 +132,52 @@ module Export
 
       enabled_dependencies.each do |dependency|
         if dependency.polymorphic?
-          condition = nil
+          binds = nil
+          manager = nil
+
           dependency.models.each do |model|
-            next unless dependency_scoped?(dependency, model)
+            next unless model.scoped?
+            if circular_dependency?(dependency, model)
+              next if dependency.soft?
 
-            query = model.hard_scope.query.dup
-            query.projections = [model.primary_key]
+              raise CircularDependencyError, "Scoped circular dependency detected in #{@clazz.name}##{dependency.name}."
+            end
 
-            @hard_scope.binds.concat(model.hard_scope.binds)
-            foreign_condition = Arel::Nodes::Grouping.new(
-              arel_table[dependency.foreign_type].eq(model.clazz.name).and(arel_table[dependency.foreign_key].in(query))
-            )
-            condition = condition ? condition.or(foreign_condition) : foreign_condition
+            model_manager = model.hard_scope.manager.dup
+            model_manager.projections = [
+              Arel::Nodes::As.new(Arel::Nodes::Quoted.new(model.clazz.name), Arel::Nodes::SqlLiteral.new('type')),
+              model_manager.source.left[:id]
+            ]
+
+            if manager
+              binds.concat(model.hard_scope.binds)
+              manager = manager.union(:all, model_manager)
+            else
+              binds = model.hard_scope.binds
+              manager = model_manager
+            end
           end
 
-          @hard_scope.query.where(Arel::Nodes::Grouping.new(condition)) if condition
+          if manager
+            manager_alias = Arel::Table.new(dependency.name.to_s.pluralize.to_sym).from
+            manager_alias.projections = [
+              manager_alias.source.left[:type],
+              manager_alias.source.left[:id]
+            ]
+
+            @hard_scope.binds.unshift(*binds)
+            @hard_scope.manager
+                       .where(Arel::Nodes::Grouping.new([arel_table[dependency.foreign_type], arel_table[dependency.foreign_key]]).in(manager_alias))
+                       .with(Arel::Nodes::As.new(manager_alias, Arel::Nodes::Grouping.new(manager.respond_to?(:ast) ? manager.ast : manager)))
+          end
         else
           next unless dependency_scoped?(dependency)
 
           model = dependency.models.first
-          query = model.hard_scope.query.dup
-          query.projections = [model.primary_key]
+          manager = model.hard_scope.manager.dup
+          manager.projections = [model.primary_key]
 
-          @hard_scope.query.where(arel_table[dependency.foreign_key].in(query))
+          @hard_scope.manager.where(arel_table[dependency.foreign_key].in(manager))
           @hard_scope.binds.concat(model.hard_scope.binds)
         end
       end
