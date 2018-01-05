@@ -35,6 +35,10 @@ module Export
     end
     alias model model_for
 
+    def reload_models
+      @models.values.each(&:reload)
+    end
+
     def scope(clazz, &block)
       model_for(clazz).scope_by(&block)
     end

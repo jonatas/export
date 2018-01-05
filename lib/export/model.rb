@@ -20,12 +20,21 @@ module Export
       load_dependencies
     end
 
+    def reload
+      @circular_dependencies = nil
+      @dependencies = nil
+      @hard_scope = nil
+      @scope = nil
+
+      load_dependencies
+    end
+
     def config(&block)
       instance_exec(&block)
     end
 
     def scope_by(&block)
-      raise 'Cannot define scope after scope has been called.' if defined?(@scope)
+      raise 'Cannot define scope after scope has been called.' if @scope
 
       @scope_block = block
     end
@@ -45,7 +54,7 @@ module Export
     end
 
     def scope
-      return @scope if defined?(@scope)
+      return @scope if @scope
 
       @scope = hard_scope.dup
       soft_dependencies = []
@@ -94,12 +103,12 @@ module Export
         @scope.manager
               .join(dependencies, Arel::Nodes::OuterJoin)
               .on(on)
-              .with(dependencies_content)
         @scope.binds.unshift(*binds)
-        soft_dependencies << DependencyTable.new(dependency, dependencies)
+        soft_dependencies << DependencyTable.new(dependency, dependencies, dependencies_content)
       end
 
       unless soft_dependencies.empty?
+        @scope.manager.with(*soft_dependencies.map(&:content))
         @scope.manager.projections = @clazz.column_names.map do |column|
           info = soft_dependencies.find { |dt| dt.dependency.foreign_key == column }
           next info.table[info.dependency.models.first.clazz.primary_key].as(info.dependency.foreign_key) if info
@@ -125,7 +134,7 @@ module Export
     attr_reader :clazz
 
     def hard_scope
-      return @hard_scope if defined?(@hard_scope)
+      return @hard_scope if @hard_scope
 
       relation = @scope_block ? @clazz.instance_exec(&@scope_block) : @clazz.all
       @hard_scope = Statement.from_relation(relation)
@@ -192,7 +201,7 @@ module Export
     private
 
     def load_dependencies
-      @dependencies ||= @clazz.reflections.map do |_, reflection|
+      @dependencies = @clazz.reflections.map do |_, reflection|
         next unless reflection.is_a?(ActiveRecord::Reflection::BelongsToReflection)
 
         Dependency.new(reflection, @dump)
@@ -202,11 +211,10 @@ module Export
     def circular_dependencies
       unless @circular_dependencies
         @circular_dependencies = []
-        models = []
 
-        block = proc do |dependency, path = []|
+        block = proc do |parent, dependency, path = []|
           dependency.models.each do |model|
-            path << CircularDependencyPathItem.new(dependency, model)
+            path << CircularDependencyPathItem.new(parent, dependency, model)
 
             if model == self
               raise CircularDependencyError, "Circular dependency detected in #{self.clazz.name}##{path.first.dependency.name}." unless path.first.dependency.polymorphic? || path.any? { |i| i.dependency.soft? }
@@ -215,14 +223,13 @@ module Export
               name = name.to_s + DEPENDENCY_SEPARATOR + path.first.model.clazz.name if path.first.dependency.polymorphic?
 
               @circular_dependencies << name
-            elsif !models.include?(model)
-              models << model
-              model.enabled_dependencies.each { |d| block.call d, path.dup }
+            elsif path.count(path.last) == 1
+              model.enabled_dependencies.each { |d| block.call model, d, path.dup }
             end
           end
         end
 
-        enabled_dependencies.each { |d| block.call d }
+        enabled_dependencies.each { |d| block.call self, d }
       end
 
       @circular_dependencies
@@ -251,6 +258,6 @@ module Export
 
   class CircularDependencyError < StandardError; end
 
-  CircularDependencyPathItem = Struct.new(:dependency, :model)
-  DependencyTable = Struct.new(:dependency, :table)
+  CircularDependencyPathItem = Struct.new(:parent, :dependency, :model)
+  DependencyTable = Struct.new(:dependency, :table, :content)
 end

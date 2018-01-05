@@ -23,7 +23,7 @@ RSpec::Matchers.define :eq_statement do |expected|
       end
 
       true
-    rescue e
+    rescue => e
       @failure_message = e.message
 
       false

@@ -56,10 +56,10 @@ describe Export::Model do
         is_expected.to include(
           have_attributes(
             name: :current_role,
-            # models: [dump.model_for(Role)],
-            # foreign_key: 'current_role_id',
-            # foreign_type: nil,
-            # polymorphic?: false,
+            models: [dump.model_for(Role)],
+            foreign_key: 'current_role_id',
+            foreign_type: nil,
+            polymorphic?: false,
             soft?: true,
             hard?: false
           )
@@ -581,7 +581,7 @@ describe Export::Model do
             dump.config do
               scope(Contact) { where(id: 1) }
               scope(Company) { where(id: 3) }
-              scope(Order) { where(id: 2) }
+              scope(Order) { where(id: [1, 2]) }
             end
           end
 
@@ -597,7 +597,7 @@ describe Export::Model do
 
             orders = Order.arel_table.from
             orders.projections = [orders.source.left[:id].as('id')]
-            orders.where(orders.source.left[:id].eq(Arel::Nodes::BindParam.new))
+            orders.where(orders.source.left[:id].in([1, 2]))
             orders.where(orders.source.left[:contact_id].in(orders_contacts))
 
             last_orders = Arel::Table.new(:last_orders)
@@ -615,7 +615,82 @@ describe Export::Model do
                      .on(last_orders[:id].eq(companies.source.left[:last_order_id]))
                      .with(last_orders_content)
 
-            is_expected.to query(companies).and_bind([2, 1, 3, 3])
+            is_expected.to query(companies).and_bind([1, 3, 3])
+          end
+
+          context 'when there is multiple soft dependencies' do
+            class AddFirstOrderToCompany < ActiveRecord::Migration[5.0]
+              def up
+                drop_table :companies
+
+                create_table :companies do |t|
+                  t.references :organization, null: false
+                  t.string :name
+                  t.references :first_order, null: true
+                  t.references :last_order, null: true
+                end
+              end
+
+              def down
+                drop_table :companies
+
+                create_table :companies do |t|
+                  t.references :organization, null: false
+                  t.string :name
+                  t.references :last_order, null: true
+                end
+              end
+            end
+
+            before do
+              AddFirstOrderToCompany.new.up
+              Company.reset_column_information
+
+              Company.class_eval do
+                belongs_to :first_order, class_name: 'Order'
+              end
+
+              dump.reload_models
+            end
+
+            it do
+              orders_companies = Company.arel_table.from
+              orders_companies.where(orders_companies.source.left[:id].eq(Arel::Nodes::BindParam.new))
+              orders_companies.projections = [orders_companies.source.left[:id]]
+
+              orders_contacts = Contact.arel_table.from
+              orders_contacts.projections = [orders_contacts.source.left[:id]]
+              orders_contacts.where(orders_contacts.source.left[:id].eq(Arel::Nodes::BindParam.new))
+              orders_contacts.where(orders_contacts.source.left[:company_id].in(orders_companies))
+
+              orders = Order.arel_table.from
+              orders.projections = [orders.source.left[:id].as('id')]
+              orders.where(orders.source.left[:id].in([1, 2]))
+              orders.where(orders.source.left[:contact_id].in(orders_contacts))
+
+              last_orders = Arel::Table.new(:last_orders)
+              last_orders_content = Arel::Nodes::As.new(last_orders, Arel::Nodes::Grouping.new(orders.ast))
+
+              first_orders = Arel::Table.new(:first_orders)
+              first_orders_content = Arel::Nodes::As.new(first_orders, Arel::Nodes::Grouping.new(orders.ast))
+
+              companies = Company.arel_table.from
+              companies.projections = [
+                companies.source.left[:id],
+                companies.source.left[:organization_id],
+                companies.source.left[:name],
+                first_orders[:id].as('first_order_id'),
+                last_orders[:id].as('last_order_id')
+              ]
+              companies.where(companies.source.left[:id].eq(Arel::Nodes::BindParam.new))
+              companies.join(last_orders, Arel::Nodes::OuterJoin)
+                       .on(last_orders[:id].eq(companies.source.left[:last_order_id]))
+              companies.join(first_orders, Arel::Nodes::OuterJoin)
+                       .on(first_orders[:id].eq(companies.source.left[:first_order_id]))
+              companies.with(last_orders_content, first_orders_content)
+
+              is_expected.to query(companies).and_bind([1, 3, 1, 3, 3])
+            end
           end
         end
       end
