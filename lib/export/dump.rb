@@ -22,7 +22,7 @@ module Export
       instance_exec(&block)
     end
 
-    def model_for(clazz)
+    def model_for(clazz, &block)
       model = @models[clazz]
       unless model
         model = Model.new(clazz)
@@ -30,6 +30,8 @@ module Export
 
         model.load(self)
       end
+
+      model.config(&block) if block_given?
 
       model
     end

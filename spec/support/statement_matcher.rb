@@ -22,6 +22,8 @@ RSpec::Matchers.define :eq_statement do |expected|
         raise 'expected that binds would match'
       end
 
+      ActiveRecord::Base.connection.raw_connection.prepare(actual_sql).close
+
       true
     rescue => e
       @failure_message = e.message

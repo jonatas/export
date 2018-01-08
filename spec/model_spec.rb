@@ -687,7 +687,7 @@ describe Export::Model do
                        .on(last_orders[:id].eq(companies.source.left[:last_order_id]))
               companies.join(first_orders, Arel::Nodes::OuterJoin)
                        .on(first_orders[:id].eq(companies.source.left[:first_order_id]))
-              companies.with(last_orders_content, first_orders_content)
+              companies.with(first_orders_content, last_orders_content)
 
               is_expected.to query(companies).and_bind([1, 3, 1, 3, 3])
             end
@@ -747,14 +747,14 @@ describe Export::Model do
             organizations = Organization.arel_table.from
             organizations.projections = [
               Arel::Nodes::As.new(Arel::Nodes::Quoted.new('Organization'), Arel::Nodes::SqlLiteral.new('type')),
-              organizations.source.left[:id]
+              organizations.source.left[:id].as('id')
             ]
             organizations.where(organizations.source.left[:id].eq(Arel::Nodes::BindParam.new))
 
             products = Product.arel_table.from
             products.projections = [
               Arel::Nodes::As.new(Arel::Nodes::Quoted.new('Product'), Arel::Nodes::SqlLiteral.new('type')),
-              products.source.left[:id]
+              products.source.left[:id].as('id')
             ]
             products.where(products.source.left[:id].eq(Arel::Nodes::BindParam.new))
 
@@ -763,7 +763,7 @@ describe Export::Model do
               commentables.source.left[:type],
               commentables.source.left[:id]
             ]
-            commentables_content = Arel::Nodes::As.new(commentables, Arel::Nodes::Grouping.new(organizations.union(:all, products)))
+            commentables_content = Arel::Nodes::As.new(commentables.source.left, organizations.union(:all, products))
 
             comments = Comment.arel_table.from
             comments.project(comments.source.left[Arel::Nodes::SqlLiteral.new('*')])
@@ -786,7 +786,7 @@ describe Export::Model do
             organizations = Organization.arel_table.from
             organizations.projections = [
               Arel::Nodes::As.new(Arel::Nodes::Quoted.new('Organization'), Arel::Nodes::SqlLiteral.new('type')),
-              organizations.source.left[:id]
+              organizations.source.left[:id].as('id')
             ]
             organizations.where(organizations.source.left[:id].eq(Arel::Nodes::BindParam.new))
 
@@ -795,7 +795,7 @@ describe Export::Model do
               commentables.source.left[:type],
               commentables.source.left[:id]
             ]
-            commentables_content = Arel::Nodes::As.new(commentables, Arel::Nodes::Grouping.new(organizations.ast))
+            commentables_content = Arel::Nodes::As.new(commentables.source.left, Arel::Nodes::Grouping.new(organizations.ast))
 
             comments = Comment.arel_table.from
             comments.project(comments.source.left[Arel::Nodes::SqlLiteral.new('*')])
@@ -904,7 +904,7 @@ describe Export::Model do
               orders = Order.arel_table.from
               orders.projections = [
                 Arel::Nodes::As.new(Arel::Nodes::Quoted.new('Order'), Arel::Nodes::SqlLiteral.new('type')),
-                orders.source.left[:id]
+                orders.source.left[:id].as('id')
               ]
               orders.where(orders.source.left[:id].eq(Arel::Nodes::BindParam.new))
 
@@ -913,7 +913,7 @@ describe Export::Model do
                 commentables.source.left[:type],
                 commentables.source.left[:id]
               ]
-              commentables_content = Arel::Nodes::As.new(commentables, Arel::Nodes::Grouping.new(orders.ast))
+              commentables_content = Arel::Nodes::As.new(commentables.source.left, Arel::Nodes::Grouping.new(orders.ast))
 
               comments = Comment.arel_table.from
               comments.project(comments.source.left[Arel::Nodes::SqlLiteral.new('*')])
@@ -936,7 +936,7 @@ describe Export::Model do
               orders = Order.arel_table.from
               orders.projections = [
                 Arel::Nodes::As.new(Arel::Nodes::Quoted.new('Order'), Arel::Nodes::SqlLiteral.new('type')),
-                orders.source.left[:id]
+                orders.source.left[:id].as('id')
               ]
               orders.where(orders.source.left[:id].eq(Arel::Nodes::BindParam.new))
 
@@ -945,7 +945,7 @@ describe Export::Model do
                 commentables.source.left[:type],
                 commentables.source.left[:id]
               ]
-              commentables_content = Arel::Nodes::As.new(commentables, Arel::Nodes::Grouping.new(orders.ast))
+              commentables_content = Arel::Nodes::As.new(commentables.source.left, Arel::Nodes::Grouping.new(orders.ast))
 
               comments = Comment.arel_table.from
               comments.project(comments.source.left[Arel::Nodes::SqlLiteral.new('*')])
@@ -1098,16 +1098,43 @@ describe Export::Model do
 
           context 'when a scope is defined for both the subject and a dependency' do
             before do
+              Comment.create description: FFaker::Lorem.paragraph,
+                             commentable: User.first,
+                             role: Role.first
+
               dump.config do
-                scope(Comment) { where(id: 2) }
                 scope(Order) { where(id: 1) }
+                scope(User) { limit(3) }
+                model(Comment) do
+                  ignore(:role)
+                  scope_by { where(id: 2) }
+                end
               end
             end
 
             it do
+              users = User.arel_table.from
+              users.projections = [users.source.left[:id]]
+              users.take(Arel::Nodes::BindParam.new)
+
+              polymorphic_users = users.dup
+              polymorphic_users.projections = [
+                Arel::Nodes::As.new(Arel::Nodes::Quoted.new('User'), Arel::Nodes::SqlLiteral.new('type')),
+                polymorphic_users.source.left[:id].as('id')
+              ]
+
+              hard_commentables = Arel::Table.new(:hard_commentables).from
+              hard_commentables.projections = [
+                hard_commentables.source.left[:type],
+                hard_commentables.source.left[:id]
+              ]
+              hard_commentables_content = Arel::Nodes::As.new(hard_commentables.source.left, Arel::Nodes::Grouping.new(polymorphic_users.ast))
+
               orders_comments = Comment.arel_table.from
               orders_comments.projections = [orders_comments.source.left[:id]]
               orders_comments.where(orders_comments.source.left[:id].eq(Arel::Nodes::BindParam.new))
+              orders_comments.where(Arel::Nodes::Grouping.new([orders_comments.source.left[:commentable_type], orders_comments.source.left[:commentable_id]]).in(hard_commentables))
+              orders_comments.with(hard_commentables_content)
 
               orders = Order.arel_table.from
               orders.projections = [
@@ -1115,25 +1142,28 @@ describe Export::Model do
                 orders.source.left[:id].as('id')
               ]
               orders.where(orders.source.left[:id].eq(Arel::Nodes::BindParam.new))
+              orders.where(orders.source.left[:user_id].in(users))
               orders.where(orders.source.left[:last_comment_id].in(orders_comments))
 
-              commentables = Arel::Table.new(:commentables)
-              commentables_content = Arel::Nodes::As.new(commentables, Arel::Nodes::Grouping.new(orders.ast))
+              soft_commentables = Arel::Table.new(:soft_commentables)
+              soft_commentables_content = Arel::Nodes::As.new(soft_commentables, orders.union(:all, polymorphic_users))
 
               comments = Comment.arel_table.from
               comments.projections = [
                 comments.source.left[:id],
                 comments.source.left[:description],
                 comments.source.left[:role_id],
-                commentables[:type].as('commentable_type'),
-                commentables[:id].as('commentable_id')
+                soft_commentables[:type].as('commentable_type'),
+                soft_commentables[:id].as('commentable_id')
               ]
               comments.where(comments.source.left[:id].eq(Arel::Nodes::BindParam.new))
-              comments.join(commentables, Arel::Nodes::OuterJoin)
-                      .on(commentables[:type].eq(comments.source.left[:commentable_type]).and(commentables[:id].eq(comments.source.left[:commentable_id])))
-                      .with(commentables_content)
+              comments.where(Arel::Nodes::Grouping.new([comments.source.left[:commentable_type], comments.source.left[:commentable_id]]).in(hard_commentables))
+              comments.join(soft_commentables, Arel::Nodes::OuterJoin)
+                      .on(soft_commentables[:type].eq(comments.source.left[:commentable_type]).and(soft_commentables[:id].eq(comments.source.left[:commentable_id])))
+                      .prepend_with(hard_commentables_content)
+                      .prepend_with(soft_commentables_content)
 
-              is_expected.to query(comments).and_bind([1, 2, 2])
+              is_expected.to query(comments).and_bind([1, 3, 3, 2, 3, 3, 2])
             end
           end
         end

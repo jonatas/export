@@ -2,6 +2,8 @@ module Export
   # Represents a model to be exported and its structure
   class Model
     DEPENDENCY_SEPARATOR = '•'.freeze
+    SOFT_PREFIX = 'soft_'
+    HARD_PREFIX = 'hard_'
 
     def initialize(clazz)
       @clazz = clazz
@@ -40,7 +42,7 @@ module Export
     end
 
     def scoped?
-      @scope_block || enabled_dependencies.any? { |d| dependency_scoped?(d) }
+      @scope_block.present? || enabled_dependencies.any? { |d| dependency_scoped?(d) }
     end
 
     def enabled_dependencies
@@ -61,12 +63,13 @@ module Export
 
       enabled_dependencies.each do |dependency|
         binds = nil
-        manager = nil
+        node = nil
 
         if dependency.polymorphic?
+          alias_prefix = SOFT_PREFIX if @scope.manager.ast.with&.children&.map(&:left)&.map(&:name)&.include?("#{HARD_PREFIX}#{dependency.name.to_s.pluralize}")
           dependency.models.each do |model|
-            next unless circular_dependency?(dependency, model) && dependency.soft?
             next unless model.scoped?
+            next unless circular_dependency?(dependency, model) || alias_prefix
 
             model_manager = model.hard_scope.manager.dup
             model_manager.projections = [
@@ -74,12 +77,12 @@ module Export
               model.primary_key.as(:id.to_s)
             ]
 
-            if manager
+            if node
               binds.concat(model.hard_scope.binds)
-              manager.union(:all, model_manager)
+              node = Arel::Nodes::UnionAll.new(node, model_manager.ast)
             else
               binds = model.hard_scope.binds
-              manager = model_manager
+              node = model_manager.ast
             end
           end
         else
@@ -90,12 +93,13 @@ module Export
           binds = model.hard_scope.binds
           manager = model.hard_scope.manager.dup
           manager.projections = [model.primary_key.as(:id.to_s)]
+          node = manager.ast
         end
 
-        next unless manager
+        next unless node
 
-        dependencies = Arel::Table.new(dependency.name.to_s.pluralize.to_sym)
-        dependencies_content = Arel::Nodes::As.new(dependencies, Arel::Nodes::Grouping.new(manager.respond_to?(:ast) ? manager.ast : manager))
+        node = Arel::Nodes::Grouping.new(node) unless node.is_a?(Arel::Nodes::UnionAll)
+        dependencies = Arel::Table.new("#{alias_prefix}#{dependency.name.to_s.pluralize}")
 
         on = dependencies[:id].eq(arel_table[dependency.foreign_key])
         on = dependencies[:type].eq(arel_table[dependency.foreign_type]).and(on) if dependency.polymorphic?
@@ -103,12 +107,12 @@ module Export
         @scope.manager
               .join(dependencies, Arel::Nodes::OuterJoin)
               .on(on)
+              .prepend_with(Arel::Nodes::As.new(dependencies, node))
         @scope.binds.unshift(*binds)
-        soft_dependencies << DependencyTable.new(dependency, dependencies, dependencies_content)
+        soft_dependencies << DependencyTable.new(dependency, dependencies)
       end
 
       unless soft_dependencies.empty?
-        @scope.manager.with(*soft_dependencies.map(&:content))
         @scope.manager.projections = @clazz.column_names.map do |column|
           info = soft_dependencies.find { |dt| dt.dependency.foreign_key == column }
           next info.table[info.dependency.models.first.clazz.primary_key].as(info.dependency.foreign_key) if info
@@ -142,7 +146,7 @@ module Export
       enabled_dependencies.each do |dependency|
         if dependency.polymorphic?
           binds = nil
-          manager = nil
+          node = nil
 
           dependency.models.each do |model|
             next unless model.scoped?
@@ -155,20 +159,22 @@ module Export
             model_manager = model.hard_scope.manager.dup
             model_manager.projections = [
               Arel::Nodes::As.new(Arel::Nodes::Quoted.new(model.clazz.name), Arel::Nodes::SqlLiteral.new('type')),
-              model_manager.source.left[:id]
+              model_manager.source.left[:id].as('id')
             ]
 
-            if manager
+            if node
               binds.concat(model.hard_scope.binds)
-              manager = manager.union(:all, model_manager)
+              node = Arel::Nodes::UnionAll.new(node, model_manager.ast)
             else
               binds = model.hard_scope.binds
-              manager = model_manager
+              node = model_manager.ast
             end
           end
 
-          if manager
-            manager_alias = Arel::Table.new(dependency.name.to_s.pluralize.to_sym).from
+          if node
+            node = Arel::Nodes::Grouping.new(node) unless node.is_a?(Arel::Nodes::UnionAll)
+            alias_prefix = HARD_PREFIX if dependency.models.any? { |m| m.scoped? && circular_dependency?(dependency, m) && dependency.soft? }
+            manager_alias = Arel::Table.new("#{alias_prefix}#{dependency.name.to_s.pluralize}").from
             manager_alias.projections = [
               manager_alias.source.left[:type],
               manager_alias.source.left[:id]
@@ -177,7 +183,7 @@ module Export
             @hard_scope.binds.unshift(*binds)
             @hard_scope.manager
                        .where(Arel::Nodes::Grouping.new([arel_table[dependency.foreign_type], arel_table[dependency.foreign_key]]).in(manager_alias))
-                       .with(Arel::Nodes::As.new(manager_alias, Arel::Nodes::Grouping.new(manager.respond_to?(:ast) ? manager.ast : manager)))
+                       .prepend_with(Arel::Nodes::As.new(manager_alias.source.left, node))
           end
         else
           next unless dependency_scoped?(dependency)
@@ -259,5 +265,5 @@ module Export
   class CircularDependencyError < StandardError; end
 
   CircularDependencyPathItem = Struct.new(:parent, :dependency, :model)
-  DependencyTable = Struct.new(:dependency, :table, :content)
+  DependencyTable = Struct.new(:dependency, :table)
 end

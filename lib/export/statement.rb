@@ -27,8 +27,10 @@ module Export
       end
     end
 
+    # :nocov:
     def pretty_print(q)
       q.text(self.to_sql)
     end
+    # :nocov:
   end
 end

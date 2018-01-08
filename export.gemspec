@@ -30,6 +30,5 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency 'rspec', '~> 3.0'
   spec.add_development_dependency 'rspec-its', '~> 1.2.0'
   spec.add_development_dependency 'sqlite3', '~> 1.3.11'
-  spec.add_dependency 'active_record_union'
   spec.add_dependency 'concurrent-ruby-edge'
 end

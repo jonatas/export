@@ -6,4 +6,5 @@ gemspec
 group :development, :test do
   gem 'rubocop', '~> 0.52.1', require: false
   gem 'rubocop-rspec'
+  gem 'simplecov', require: false
 end

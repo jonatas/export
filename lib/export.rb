@@ -1,6 +1,5 @@
 require 'export/version'
 require 'active_support/inflector'
-require 'active_record_union'
 require 'active_record'
 require 'export/transform'
 require 'export/dependency'
@@ -8,6 +7,8 @@ require 'export/statement'
 require 'export/model'
 require 'export/dump'
 require 'export/transform_data'
+
+require_relative 'ext/arel/select_manager'
 
 # Allow to export a specific table
 module Export
