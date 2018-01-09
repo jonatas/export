@@ -8,7 +8,7 @@ require 'export/model'
 require 'export/dump'
 require 'export/transform_data'
 
-require_relative 'ext/arel/select_manager'
+require_relative 'ext/arel'
 
 # Allow to export a specific table
 module Export

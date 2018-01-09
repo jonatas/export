@@ -4,6 +4,7 @@ require:
 
 AllCops:
   Exclude:
+    - 'lib/ext/**/*'
     - 'vendor/**/*'
     - 'spec/fixtures/**/*'
     - 'tmp/**/*'

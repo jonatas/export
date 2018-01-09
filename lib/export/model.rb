@@ -2,8 +2,8 @@ module Export
   # Represents a model to be exported and its structure
   class Model
     DEPENDENCY_SEPARATOR = '•'.freeze
-    SOFT_PREFIX = 'soft_'
-    HARD_PREFIX = 'hard_'
+    SOFT_PREFIX = 'soft_'.freeze
+    HARD_PREFIX = 'hard_'.freeze
 
     def initialize(clazz)
       @clazz = clazz
@@ -79,7 +79,7 @@ module Export
 
             if node
               binds.concat(model.hard_scope.binds)
-              node = Arel::Nodes::UnionAll.new(node, model_manager.ast)
+              node = node.union_all(model_manager)
             else
               binds = model.hard_scope.binds
               node = model_manager.ast
@@ -98,7 +98,6 @@ module Export
 
         next unless node
 
-        node = Arel::Nodes::Grouping.new(node) unless node.is_a?(Arel::Nodes::UnionAll)
         dependencies = Arel::Table.new("#{alias_prefix}#{dependency.name.to_s.pluralize}")
 
         on = dependencies[:id].eq(arel_table[dependency.foreign_key])
@@ -107,7 +106,7 @@ module Export
         @scope.manager
               .join(dependencies, Arel::Nodes::OuterJoin)
               .on(on)
-              .prepend_with(Arel::Nodes::As.new(dependencies, node))
+              .prepend_with(Arel::Nodes::As.new(dependencies, Arel::Nodes::Grouping.new(node)))
         @scope.binds.unshift(*binds)
         soft_dependencies << DependencyTable.new(dependency, dependencies)
       end
@@ -164,7 +163,7 @@ module Export
 
             if node
               binds.concat(model.hard_scope.binds)
-              node = Arel::Nodes::UnionAll.new(node, model_manager.ast)
+              node = node.union_all(model_manager)
             else
               binds = model.hard_scope.binds
               node = model_manager.ast
@@ -172,7 +171,6 @@ module Export
           end
 
           if node
-            node = Arel::Nodes::Grouping.new(node) unless node.is_a?(Arel::Nodes::UnionAll)
             alias_prefix = HARD_PREFIX if dependency.models.any? { |m| m.scoped? && circular_dependency?(dependency, m) && dependency.soft? }
             manager_alias = Arel::Table.new("#{alias_prefix}#{dependency.name.to_s.pluralize}").from
             manager_alias.projections = [
@@ -183,7 +181,7 @@ module Export
             @hard_scope.binds.unshift(*binds)
             @hard_scope.manager
                        .where(Arel::Nodes::Grouping.new([arel_table[dependency.foreign_type], arel_table[dependency.foreign_key]]).in(manager_alias))
-                       .prepend_with(Arel::Nodes::As.new(manager_alias.source.left, node))
+                       .prepend_with(Arel::Nodes::As.new(manager_alias.source.left, Arel::Nodes::Grouping.new(node)))
           end
         else
           next unless dependency_scoped?(dependency)

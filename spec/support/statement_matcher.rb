@@ -1,3 +1,4 @@
+# :nocov:
 RSpec::Matchers.define :eq_statement do |expected|
   match do |actual|
     begin
@@ -53,3 +54,4 @@ end
 RSpec::Matchers.alias_matcher :query, :eq_statement
 
 DatabaseBind = Struct.new(:value_for_database)
+# :nocov:
