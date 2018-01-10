@@ -151,21 +151,10 @@ RSpec.shared_context 'database creation' do # rubocop:disable RSpec/ContextWordi
         q.text(self.to_sql)
       end
     end
-
-    class Arel::SelectManager
-      alias old_pretty_print pretty_print
-      def pretty_print(q)
-        q.text(self.to_sql)
-      end
-    end
   end
 
   after do
     class ActiveRecord::Relation
-      alias pretty_print old_pretty_print
-    end
-
-    class Arel::SelectManager
       alias pretty_print old_pretty_print
     end
 

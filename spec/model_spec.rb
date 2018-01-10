@@ -1,5 +1,4 @@
 require 'spec_helper'
-require 'pry'
 
 describe Export::Model do
   include_context 'database creation'

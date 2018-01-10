@@ -1,19 +1,33 @@
 module Export
   # Represents a model to be exported and its structure
   class Model
+    CircularDependencyPathItem = Struct.new(:parent, :dependency, :model)
+    DependencyTable = Struct.new(:dependency, :table)
+
     DEPENDENCY_SEPARATOR = '•'.freeze
     SOFT_PREFIX = 'soft_'.freeze
     HARD_PREFIX = 'hard_'.freeze
 
+    # Creates a model for a given `ActiveRecord` clazz.
+    #
+    # @param clazz [Class] the `ActiveRecord` class.
+    # @return [Model] the new model.
     def initialize(clazz)
       @clazz = clazz
       @ignorable_dependencies = []
     end
 
+    # Returns a simple representantion of the model.
+    #
+    # @return [String] the string representation.
     def inspect
       "#<#{self.class.name} @clazz=#{@clazz.name}>"
     end
 
+    # Performs the loading process of the model
+    #
+    # @param dump [Dump] the dump to be used.
+    # @raise if was already loaded.
     def load(dump)
       raise 'Cannot reload a model.' if defined?(@dump)
 
@@ -22,6 +36,7 @@ module Export
       load_dependencies
     end
 
+    # Reloads the internal state.
     def reload
       @circular_dependencies = nil
       @dependencies = nil
@@ -31,20 +46,38 @@ module Export
       load_dependencies
     end
 
+    # Allows the configuration of the model using a DSL-like approach.
+    #
+    # @param block the block to be called.
     def config(&block)
       instance_exec(&block)
     end
 
+    # Allows the definition of a scope to limit the query using `ActiveRecord`
+    # syntax.
+    #
+    # @param block the block to be called.
+    # @raise if #scope had already been called, because you can change it after
+    #        this. You can always reload and try again.
     def scope_by(&block)
       raise 'Cannot define scope after scope has been called.' if @scope
 
       @scope_block = block
     end
 
+    # Informs if a model should be scoped or not. This checks if somebody
+    # restricted the model using #scoped_by or if any of the dependencies
+    # is scoped, recursively.
+    #
+    # @param block the block to be called.
     def scoped?
       @scope_block.present? || enabled_dependencies.any? { |d| dependency_scoped?(d) }
     end
 
+    # Gives all dependencies of a model that are not explicitly ignored.
+    #
+    # @return if a block is given, calls the block for every dependency. If
+    #         not, returns an enumerator with all the dependencies.
     def enabled_dependencies
       return to_enum(:enabled_dependencies) unless block_given?
 
@@ -55,6 +88,18 @@ module Export
       end
     end
 
+    # Gives a query that scopes the model by the definition (#scope_by) and
+    # by it's hard and soft dependencies.
+    # When soft dependencies are circular, the columns (`id` and `type`, when
+    # polymorphic) of each dependency are restricted to the presence of the
+    # dependent model. This means that a record A that weakly references a
+    # model B, can result in a scope where the reference of record B inside
+    # model A will be faked to `null` if model B is not scoped.
+    # When soft dependencies are not circular or dependencies are hard, the
+    # model is restricted using a simple `WHERE ... IN (SELECT id ...)`
+    # statement.
+    #
+    # @return [Statement] the statement that scopes the model.
     def scope
       return @scope if @scope
 
@@ -126,6 +171,10 @@ module Export
       @scope
     end
 
+    # Allows dependencies to be ignored in scoping process. The dependencies
+    # are just ignored, like if those columns were just data columns.
+    #
+    # @param clazz [Symbol] the names of the dependencies.
     def ignore(*args)
       @ignorable_dependencies.concat(args)
     end
@@ -204,6 +253,12 @@ module Export
 
     private
 
+    private_constant :DEPENDENCY_SEPARATOR
+    private_constant :SOFT_PREFIX
+    private_constant :HARD_PREFIX
+    private_constant :CircularDependencyPathItem
+    private_constant :DependencyTable
+
     def load_dependencies
       @dependencies = @clazz.reflections.map do |_, reflection|
         next unless reflection.is_a?(ActiveRecord::Reflection::BelongsToReflection)
@@ -260,8 +315,8 @@ module Export
     end
   end
 
+  # Represents an error for those cases when a dependency is pointing to
+  # a model and this model has a dependency pointing to the original one,
+  # given that both dependencies are required (hard).
   class CircularDependencyError < StandardError; end
-
-  CircularDependencyPathItem = Struct.new(:parent, :dependency, :model)
-  DependencyTable = Struct.new(:dependency, :table)
 end
