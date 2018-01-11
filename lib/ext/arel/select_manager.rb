@@ -7,7 +7,9 @@ Arel::SelectManager.class_eval do
     with(subqueries)
   end
 
+  # :nocov:
   def pretty_print(q)
     q.text(self.to_sql)
   end
+  # :nocov:
 end

@@ -1,6 +1,6 @@
 require 'spec_helper'
 
-describe Export::TransformData do
+describe Export::TransformData, :pending do
   include_context 'database setup'
 
   before do

@@ -6,6 +6,7 @@ require 'export/dependency'
 require 'export/statement'
 require 'export/model'
 require 'export/dump'
+require 'export/content_printer'
 require 'export/transform_data'
 
 require_relative 'ext/arel'

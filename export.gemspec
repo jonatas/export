@@ -21,14 +21,16 @@ Gem::Specification.new do |spec|
   spec.executables   = spec.files.grep(%r{^exe/}) { |f| File.basename(f) }
   spec.require_paths = ['lib']
 
-  spec.add_development_dependency 'activerecord', '~> 5.0'
-  spec.add_development_dependency 'activesupport', '~> 5.0'
   spec.add_development_dependency 'bundler', '~> 1.13'
   spec.add_development_dependency 'ffaker', '~> 2.4.0'
-  spec.add_development_dependency 'pry-byebug'
-  spec.add_development_dependency 'rake', '~> 10.0'
+  spec.add_development_dependency 'pry-byebug', '~> 3.4.1'
   spec.add_development_dependency 'rspec', '~> 3.0'
   spec.add_development_dependency 'rspec-its', '~> 1.2.0'
+  spec.add_development_dependency 'rubocop', '~> 0.52.1'
+  spec.add_development_dependency 'rubocop-rspec', '~> 1.20.0'
+  spec.add_development_dependency 'simplecov', '~> 0.15.1'
   spec.add_development_dependency 'sqlite3', '~> 1.3.11'
-  spec.add_dependency 'concurrent-ruby-edge'
+  spec.add_dependency 'activerecord', '~> 5.0'
+  spec.add_dependency 'activesupport', '~> 5.0'
+  spec.add_dependency 'rake', '~> 10.0'
 end

@@ -1,71 +1,87 @@
 require 'spec_helper'
 
 describe Export::Dump do
-  subject do
-    Export.transform User do
-      replace :email, 'user@example.com'
-    end
+  include_context 'database creation'
 
-    Export.dump 'light' do
-      model(User) { where(id: User.order(:id).first.id) }
-    end
-  end
+  let(:dump) { described_class.new }
 
-  let(:first_user_id) { User.first.id }
+  describe 'dump info' do
+    subject { dump.all_models }
 
-  include_context 'database setup'
-
-  describe '#fetch_data' do
-    def exported_ids
-      Hash[subject.exported.map { |k, v| [k, v.map { |e| e['id'] }] } ]
-    end
-
-    it do
-      expect { subject.fetch_data(User) }
-        .to change { exported_ids['User'] }
-        .to([first_user_id])
-    end
-
-    it 'does not export any order if users was not exported' do
-      expect { subject.fetch_data(Order) }
-        .to change { exported_ids['Order'] }
-    end
-
-    it 'works in sequence applying filters' do
-      expect do
-        subject.fetch_data(User)
-        subject.fetch_data(Order)
-      end.to change { subject.exported }
-    end
-  end
-
-  describe '#fetch' do
-    before { subject.fetch }
-
-    it 'works in sequence applying filters' do
-      data = subject.exported
-      expect(data).to have_key('User')
-        .and have_key('Category')
-        .and have_key('Product')
-        .and have_key('Order')
-        .and have_key('OrderItem')
-        .and have_key('Comment')
-
-      user_ids = [User.order(:id).first.id]
-      expect(data['User'].map(&:id)).to eq(user_ids)
-      expect(data['Order'].map(&:user_id).uniq).to eq(user_ids)
-
-      commentable = data['Comment'].map(&:commentable)
-      expect(commentable.grep(Product).map(&:id) - data['Product'].map(&:id)).to be_empty
-      expect(commentable.grep(OrderItem).map(&:id) - data['OrderItem'].map(&:id)).to be_empty
-    end
-
-    context 'when transforming data on fetch' do
+    describe 'ignored' do
       before do
-        subject.fetch
+        dump.config do
+          model(User).ignore
+          model(Role).ignore
+          model(Branch).ignore_dependency :organization
+        end
       end
-      it 'works in sequence applying filters' do
-        expect(subject.exported['User'].map(&:email)).to all(eq('user@example.com'))
+
+      it do
+        is_expected.to include(
+          have_attributes(
+            clazz: User,
+            ignore?: true
+          ),
+          have_attributes(
+            clazz: Role,
+            ignore?: true
+          ),
+          have_attributes(
+            clazz: Organization,
+            ignore?: false
+          ),
+          have_attributes(
+            clazz: Branch,
+            ignore?: false
+          )
+        ).and satisfy { |ms| ms.count(&:ignore?) == 2 }
+      end
+    end
+
+    describe 'models' do
+      include_context 'database seed'
+
+      context 'when no scope is defined' do
+        it do
+          is_expected.to include(
+            have_attributes(
+              clazz: Product,
+              full_count: 10,
+              scope_count: 10,
+              scope_percentual: 1
+            ),
+            have_attributes(
+              clazz: Organization,
+              full_count: 1,
+              scope_count: 1,
+              scope_percentual: 1
+            )
+          )
+        end
+      end
+
+      context 'when scope is defined directly' do
+        before do
+          User.count
+
+          dump.config do
+            model(Product) do
+              scope_by { where(id: [2, 4, 6]) }
+            end
+          end
+        end
+
+        it do
+          is_expected.to include(
+            have_attributes(
+              clazz: Product,
+              full_count: 10,
+              scope_count: 3,
+              scope_percentual: 0.3
+            )
+          )
+        end
       end
     end
   end

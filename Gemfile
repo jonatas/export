@@ -4,7 +4,8 @@ source 'https://rubygems.org'
 gemspec
 
 group :development, :test do
-  gem 'rubocop', '~> 0.52.1', require: false
-  gem 'rubocop-rspec'
+  gem 'pry-byebug'
+  gem 'rubocop', require: false
+  gem 'rubocop-rspec', require: false
   gem 'simplecov', require: false
 end

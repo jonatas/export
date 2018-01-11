@@ -7,6 +7,11 @@ module Export
     # @return [String] the column for the `id` of the dependency.
     delegate :foreign_key, to: :@reflection
 
+    # The attached reflection for the dependency.
+    #
+    # @return [Reflection] the reflection.
+    attr_reader :reflection
+
     # Gives the models of a given dependency. If the model is polymorphic,
     # returns all the models used in database. If not, returns only the
     # declared model from the reflection.
@@ -23,14 +28,21 @@ module Export
     def initialize(reflection, dump)
       @reflection = reflection
       @dump = dump
+      @ignore = false
 
-      klasses = if reflection.polymorphic?
-                  reflection.active_record.distinct.pluck(reflection.foreign_type).map(&:safe_constantize)
+      load
+    end
+
+    # Reloads the mutable internal state of the dependency.
+    def reload
+      klasses = if @reflection.polymorphic?
+                  @reflection.active_record.distinct.pluck(reflection.foreign_type).map(&:safe_constantize)
                 else
-                  [reflection.klass]
+                  [@reflection.klass]
                 end
       @models = klasses.map { |k| @dump.model_for(k) }
     end
+    alias load reload
 
     # Informs if the dependency is polymorphic.
     #
@@ -64,5 +76,19 @@ module Export
     def hard?
       !soft?
     end
+
+    # @return [Boolean] wheter or not the dependency should be ignored.
+    def ignore?
+      @ignore || @models.presence&.all?(&:ignore?)
+    end
+
+    # Allows defining that the dependency should be ignored.
+    #
+    # @param value [Boolean] the ignore value.
+    def ignore(value = true)
+      @ignore = value
+    end
+
+    private :load
   end
 end

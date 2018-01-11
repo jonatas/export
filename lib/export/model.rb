@@ -8,13 +8,16 @@ module Export
     SOFT_PREFIX = 'soft_'.freeze
     HARD_PREFIX = 'hard_'.freeze
 
+    # @return [Class] the class on which this model represent.
+    attr_reader :clazz
+
     # Creates a model for a given `ActiveRecord` clazz.
     #
     # @param clazz [Class] the `ActiveRecord` class.
     # @return [Model] the new model.
     def initialize(clazz)
       @clazz = clazz
-      @ignorable_dependencies = []
+      @ignore = false
     end
 
     # Returns a simple representantion of the model.
@@ -29,21 +32,33 @@ module Export
     # @param dump [Dump] the dump to be used.
     # @raise if was already loaded.
     def load(dump)
-      raise 'Cannot reload a model.' if defined?(@dump)
+      raise 'Cannot reload a model from a new dump.' if defined?(@dump)
 
       @dump = dump
+      @dependencies = @clazz.reflections.map do |_, reflection|
+        next unless reflection.is_a?(ActiveRecord::Reflection::BelongsToReflection)
 
-      load_dependencies
+        Dependency.new(reflection, @dump)
+      end.compact
     end
 
     # Reloads the internal state.
     def reload
       @circular_dependencies = nil
-      @dependencies = nil
       @hard_scope = nil
       @scope = nil
 
-      load_dependencies
+      @dependencies = @clazz.reflections.map do |_, reflection|
+        next unless reflection.is_a?(ActiveRecord::Reflection::BelongsToReflection)
+
+        dependency = @dependencies.find { |d| d.reflection == reflection }
+        if dependency
+          dependency.reload
+          dependency
+        else
+          Dependency.new(reflection, @dump)
+        end
+      end.compact
     end
 
     # Allows the configuration of the model using a DSL-like approach.
@@ -65,6 +80,31 @@ module Export
       @scope_block = block
     end
 
+    # Allows dependencies to be ignored in scoping process. The dependencies
+    # are just ignored, like if those columns were just data columns.
+    #
+    # @param clazz [Symbol] the names of the dependencies.
+    def ignore_dependency(*args)
+      raise 'Cannot ignore dependencies without loading.' unless @dump
+
+      args.each do |name|
+        @dependencies.find { |d| d.name == name }.ignore
+      end
+    end
+    alias ignore_dependencies ignore_dependency
+
+    # @return [Boolean] wheter or not the model should be ignored.
+    def ignore?
+      @ignore
+    end
+
+    # Allows defining that the model should be ignored completely from dump.
+    #
+    # @param value [Boolean] the ignore value.
+    def ignore(value = true)
+      @ignore = value
+    end
+
     # Informs if a model should be scoped or not. This checks if somebody
     # restricted the model using #scoped_by or if any of the dependencies
     # is scoped, recursively.
@@ -76,16 +116,9 @@ module Export
 
     # Gives all dependencies of a model that are not explicitly ignored.
     #
-    # @return if a block is given, calls the block for every dependency. If
-    #         not, returns an enumerator with all the dependencies.
+    # @return [Array] the enabled depencies
     def enabled_dependencies
-      return to_enum(:enabled_dependencies) unless block_given?
-
-      @dependencies.each do |dependency|
-        next if @ignorable_dependencies.include?(dependency.name)
-
-        yield dependency
-      end
+      @dependencies.reject(&:ignore?)
     end
 
     # Gives a query that scopes the model by the definition (#scope_by) and
@@ -171,19 +204,36 @@ module Export
       @scope
     end
 
-    # Allows dependencies to be ignored in scoping process. The dependencies
-    # are just ignored, like if those columns were just data columns.
+    # The number of lines of the model in its unscoped state. A simple
+    # `SELECT COUNT(*) FROM ...`.
     #
-    # @param clazz [Symbol] the names of the dependencies.
-    def ignore(*args)
-      @ignorable_dependencies.concat(args)
+    # @return [Integer] the number of lines.
+    def full_count
+      @clazz.count
+    end
+
+    # The number of scoped items.
+    #
+    # @return [Integer] the number of lines.
+    def scope_count
+      count_scope = scope.dup
+      count_scope.manager.projections = [Arel.star.count]
+
+      count_scope.execute.first&.values&.first || 0
+    end
+
+    # The scoped percentual, that is, the number of scoped lines divided
+    # by the total number of lines of the model.
+    #
+    # @return [Float] the percentual or `nil` if #full_count is empty.
+    def scope_percentual
+      total = full_count
+      scope_count / total.to_f if total.positive?
     end
 
     protected
 
     delegate :arel_table, to: :clazz
-
-    attr_reader :clazz
 
     def hard_scope
       return @hard_scope if @hard_scope
@@ -253,19 +303,11 @@ module Export
 
     private
 
+    private_constant :CircularDependencyPathItem
+    private_constant :DependencyTable
     private_constant :DEPENDENCY_SEPARATOR
     private_constant :SOFT_PREFIX
     private_constant :HARD_PREFIX
-    private_constant :CircularDependencyPathItem
-    private_constant :DependencyTable
-
-    def load_dependencies
-      @dependencies = @clazz.reflections.map do |_, reflection|
-        next unless reflection.is_a?(ActiveRecord::Reflection::BelongsToReflection)
-
-        Dependency.new(reflection, @dump)
-      end.compact
-    end
 
     def circular_dependencies
       unless @circular_dependencies

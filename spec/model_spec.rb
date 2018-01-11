@@ -11,13 +11,19 @@ describe Export::Model do
     let(:clazz) { Organization }
 
     context 'when loading the model again' do
-      it { expect { subject.load(dump) }.to raise_error('Cannot reload a model.') }
+      it { expect { subject.load(dump) }.to raise_error('Cannot reload a model from a new dump.') }
     end
 
     context 'when changing scope after calling #scope' do
       before { subject.scope }
 
       it { expect { subject.scope_by { -> {} } }.to raise_error('Cannot define scope after scope has been called.') }
+    end
+
+    context 'when ignoring dependencies before loading' do
+      subject { described_class.new(Role) }
+
+      it { expect { subject.ignore_dependency :user }.to raise_error('Cannot ignore dependencies without loading.') }
     end
   end
 
@@ -72,12 +78,12 @@ describe Export::Model do
       it do
         is_expected.to include(
           have_attributes(
-            # name: :commentable,
-            # models: [],
+            name: :commentable,
+            models: [],
             foreign_key: 'commentable_id',
             foreign_type: 'commentable_type',
-            # polymorphic?: true,
-            # soft?: false,
+            polymorphic?: true,
+            soft?: false,
             hard?: true
           )
         )
@@ -158,7 +164,7 @@ describe Export::Model do
       before do
         dump.config do
           model(Role).config do
-            ignore :user
+            ignore_dependency :user
           end
         end
       end
@@ -441,7 +447,7 @@ describe Export::Model do
 
         before do
           dump.config do
-            model(Company).ignore :organization
+            model(Organization).ignore
           end
         end
 
@@ -501,8 +507,8 @@ describe Export::Model do
 
         before do
           dump.config do
-            model(Order).ignore :user
-            model(Company).ignore :organization
+            model(Order).ignore_dependency :user
+            model(Company).ignore_dependency :organization
           end
         end
 
@@ -652,6 +658,11 @@ describe Export::Model do
               dump.reload_models
             end
 
+            after do
+              AddFirstOrderToCompany.new.down
+              Company.reset_column_information
+            end
+
             it do
               orders_companies = Company.arel_table.from
               orders_companies.where(orders_companies.source.left[:id].eq(Arel::Nodes::BindParam.new))
@@ -741,7 +752,7 @@ describe Export::Model do
               scope(Product) { where(id: 2) }
               model(Branch) do
                 scope_by { where(id: 3) }
-                ignore(:organization)
+                ignore_dependency(:organization)
               end
             end
 
@@ -783,7 +794,7 @@ describe Export::Model do
             commentables_content = Arel::Nodes::As.new(commentables.source.left, Arel::Nodes::Grouping.new(branches.union_all(organizations).union_all(products)))
 
             comments = Comment.arel_table.from
-            comments.project(comments.source.left[Arel::Nodes::SqlLiteral.new('*')])
+            comments.project(comments.source.left[Arel.star])
             comments.where(Arel::Nodes::Grouping.new([comments.source.left[:commentable_type], comments.source.left[:commentable_id]]).in(commentables))
                     .with(commentables_content)
 
@@ -815,7 +826,7 @@ describe Export::Model do
             commentables_content = Arel::Nodes::As.new(commentables.source.left, Arel::Nodes::Grouping.new(organizations.ast))
 
             comments = Comment.arel_table.from
-            comments.project(comments.source.left[Arel::Nodes::SqlLiteral.new('*')])
+            comments.project(comments.source.left[Arel.star])
             comments.where(comments.source.left[:id].eq(Arel::Nodes::BindParam.new))
             comments.where(Arel::Nodes::Grouping.new([comments.source.left[:commentable_type], comments.source.left[:commentable_id]]).in(commentables))
                     .with(commentables_content)
@@ -933,7 +944,7 @@ describe Export::Model do
               commentables_content = Arel::Nodes::As.new(commentables.source.left, Arel::Nodes::Grouping.new(orders.ast))
 
               comments = Comment.arel_table.from
-              comments.project(comments.source.left[Arel::Nodes::SqlLiteral.new('*')])
+              comments.project(comments.source.left[Arel.star])
               comments.where(Arel::Nodes::Grouping.new([comments.source.left[:commentable_type], comments.source.left[:commentable_id]]).in(commentables))
                       .with(commentables_content)
 
@@ -965,7 +976,7 @@ describe Export::Model do
               commentables_content = Arel::Nodes::As.new(commentables.source.left, Arel::Nodes::Grouping.new(orders.ast))
 
               comments = Comment.arel_table.from
-              comments.project(comments.source.left[Arel::Nodes::SqlLiteral.new('*')])
+              comments.project(comments.source.left[Arel.star])
               comments.where(comments.source.left[:id].eq(Arel::Nodes::BindParam.new))
               comments.where(Arel::Nodes::Grouping.new([comments.source.left[:commentable_type], comments.source.left[:commentable_id]]).in(commentables))
                       .with(commentables_content)
@@ -1123,7 +1134,7 @@ describe Export::Model do
                 scope(Order) { where(id: 1) }
                 scope(User) { limit(3) }
                 model(Comment) do
-                  ignore(:role)
+                  ignore_dependency(:role)
                   scope_by { where(id: 2) }
                 end
               end

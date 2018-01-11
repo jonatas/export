@@ -1,4 +1,3 @@
-# :nocov:
 RSpec::Matchers.define :eq_statement do |expected|
   match do |actual|
     begin
@@ -9,7 +8,8 @@ RSpec::Matchers.define :eq_statement do |expected|
 
         expected = Export::Statement.from_relation(expected)
       elsif expected.is_a?(Arel::SelectManager)
-        expected = Export::Statement.new(expected, database_binds)
+        clazz = ActiveRecord::Base.descendants.find { |c| c.table_name == expected.source.left.name }
+        expected = Export::Statement.new(clazz, expected, database_binds)
       end
 
       actual_sql = actual.to_sql
@@ -54,4 +54,3 @@ end
 RSpec::Matchers.alias_matcher :query, :eq_statement
 
 DatabaseBind = Struct.new(:value_for_database)
-# :nocov:

@@ -1,7 +1,10 @@
 require 'simplecov'
-SimpleCov.start
+SimpleCov.start do
+  add_filter 'support/statement_matcher.rb'
+end
 
 $LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
+require 'pry'
 require 'export'
 require 'rspec/its'
 require 'active_record'
