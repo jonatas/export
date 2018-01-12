@@ -6,6 +6,7 @@ RSpec::Matchers.define :eq_statement do |expected|
       if expected.is_a?(ActiveRecord::Relation)
         raise ArgumentError, 'cannot specify binds when expecting relation' if binds
 
+        expected = expected.select(expected.model.column_names) if expected.select_values.empty?
         expected = Export::Statement.from_relation(expected)
       elsif expected.is_a?(Arel::SelectManager)
         clazz = ActiveRecord::Base.descendants.find { |c| c.table_name == expected.source.left.name }

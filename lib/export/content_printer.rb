@@ -18,7 +18,7 @@ module Export
     #
     # @return [IO] the io.
     def print
-      @dump.all_models.each do |model|
+      @dump.models.each do |model|
         print_model model unless model.ignore?
       end
 
@@ -45,12 +45,19 @@ module Export
     end
 
     def print_header(model)
-      @io.puts "INSERT INTO #{model.clazz.table_name} (#{model.clazz.column_names.join(', ')}) VALUES ("
+      columns = model.enabled_columns
+
+      @io.puts "INSERT INTO #{model.clazz.table_name} (#{columns.keys.join(', ')}) VALUES ("
     end
 
     def print_model_row(model, row)
       connection = ActiveRecord::Base.connection
-      values = row.map { |c, v| connection.quote(connection.type_cast(v, model.clazz.columns_hash[c])) }
+      columns = model.enabled_columns.map { |n, c| [n, c.raw_column] }.to_h
+      values = row.map do |column, value|
+        value = model.columns[column].replace_value value
+
+        connection.quote(connection.type_cast(value, columns[column]))
+      end
 
       @io.print "  (#{values.join(', ')})"
     end

@@ -1,12 +1,16 @@
 module Export
   # Represents the dump process
   class Dump
+    # @return [Array] the globally defined columns.
+    attr_reader :columns
+
     # Creates a dump.
     #
     # @param block the block to be called.
     # @return [Dump] the new dump.
     def initialize(&block)
       @models = {}
+      @columns = {}.with_indifferent_access
 
       config(&block) if block_given?
     end
@@ -43,7 +47,7 @@ module Export
     # All valid models the inherit from `ActiveRecord::Base`.
     #
     # @return [Array] the models.
-    def all_models
+    def models
       ActiveRecord::Base.descendants.reject(&:abstract_class).select(&:table_exists?).map { |c| model(c) }
     end
 
@@ -59,5 +63,20 @@ module Export
     def scope(clazz, &block)
       model_for(clazz).scope_by(&block)
     end
+
+    # Returns a column for the whole dump. This allows users to define
+    # global rules that applies to every model.
+    #
+    # @param name the name of the column.
+    # @param block if a block is given, then the block is called in the context
+    #              of the column.
+    # @return [Column] the column.
+    def column_for(name, &block)
+      column = @columns[name] ||= Column.new(name)
+      column.config(&block) if block_given?
+
+      column
+    end
+    alias column column_for
   end
 end

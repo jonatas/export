@@ -4,6 +4,7 @@ RSpec.shared_context 'database creation' do # rubocop:disable RSpec/ContextWordi
       create_table :users do |t|
         t.string :email, :name
         t.integer :current_role_id
+        t.timestamps
       end
 
       create_table :roles do |t|
@@ -36,6 +37,7 @@ RSpec.shared_context 'database creation' do # rubocop:disable RSpec/ContextWordi
         t.references :user, null: false
         t.references :contact, null: false
         t.string :status
+        t.timestamps
       end
 
       create_table :categories do |t|
@@ -54,12 +56,14 @@ RSpec.shared_context 'database creation' do # rubocop:disable RSpec/ContextWordi
         t.references :product, null: false
         t.integer :quantity
         t.decimal :price
+        t.timestamps
       end
 
       create_table :comments do |t|
         t.string :description
         t.references :role, null: false
         t.references :commentable, polymorphic: true, index: true, null: false
+        t.timestamps
       end
     end
 
@@ -146,10 +150,12 @@ RSpec.shared_context 'database creation' do # rubocop:disable RSpec/ContextWordi
     end
 
     class ActiveRecord::Relation
+      # :nocov:
       alias old_pretty_print pretty_print
       def pretty_print(q)
         q.text(self.to_sql)
       end
+      # :nocov:
     end
   end
 
@@ -233,9 +239,4 @@ RSpec.shared_context 'database seed' do |people: 2, admins: 1, organizations: 1,
                      role: Role.random
     end
   end
-end
-
-RSpec.shared_context 'database setup' do |people: 2, admins: 1, organizations: 1, branches: 1, companies: 1, contacts: 2, orders: 5, products: 10, categories: 4, orders_items: 30| # rubocop:disable RSpec/ContextWording, Metrics/ParameterLists
-  include_context 'database creation'
-  include_context 'database seed', people: people, admins: admins, organizations: organizations, branches: branches, companies: companies, contacts: contacts, orders: orders, products: products, categories: categories, orders_items: orders_items
 end

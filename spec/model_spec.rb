@@ -329,7 +329,9 @@ describe Export::Model do
               users.source.left[:id],
               users.source.left[:email],
               users.source.left[:name],
-              current_roles[:id].as('current_role_id')
+              current_roles[:id].as('current_role_id'),
+              users.source.left[:created_at],
+              users.source.left[:updated_at]
             ]
             users.join(current_roles, Arel::Nodes::OuterJoin)
                  .on(current_roles[:id].eq(users.source.left[:current_role_id]))
@@ -356,7 +358,9 @@ describe Export::Model do
               users.source.left[:id],
               users.source.left[:email],
               users.source.left[:name],
-              current_roles[:id].as('current_role_id')
+              current_roles[:id].as('current_role_id'),
+              users.source.left[:created_at],
+              users.source.left[:updated_at]
             ]
             users.join(current_roles, Arel::Nodes::OuterJoin)
                  .on(current_roles[:id].eq(users.source.left[:current_role_id]))
@@ -392,7 +396,9 @@ describe Export::Model do
               users.source.left[:id],
               users.source.left[:email],
               users.source.left[:name],
-              current_roles[:id].as('current_role_id')
+              current_roles[:id].as('current_role_id'),
+              users.source.left[:created_at],
+              users.source.left[:updated_at]
             ]
             users.where(users.source.left[:id].eq(Arel::Nodes::BindParam.new))
             users.join(current_roles, Arel::Nodes::OuterJoin)
@@ -513,7 +519,7 @@ describe Export::Model do
         end
 
         context 'when no scope is defined' do
-          it { is_expected.to query(Company.all) }
+          it { is_expected.to query(Company.all.select(:id, :name, :last_order_id)) }
         end
 
         context 'when a scope is defined for the subject' do
@@ -540,7 +546,6 @@ describe Export::Model do
             companies = Company.arel_table.from
             companies.projections = [
               companies.source.left[:id],
-              companies.source.left[:organization_id],
               companies.source.left[:name],
               last_orders[:id].as('last_order_id')
             ]
@@ -569,7 +574,6 @@ describe Export::Model do
             companies = Company.arel_table.from
             companies.projections = [
               companies.source.left[:id],
-              companies.source.left[:organization_id],
               companies.source.left[:name],
               last_orders[:id].as('last_order_id')
             ]
@@ -611,7 +615,6 @@ describe Export::Model do
             companies = Company.arel_table.from
             companies.projections = [
               companies.source.left[:id],
-              companies.source.left[:organization_id],
               companies.source.left[:name],
               last_orders[:id].as('last_order_id')
             ]
@@ -687,7 +690,6 @@ describe Export::Model do
               companies = Company.arel_table.from
               companies.projections = [
                 companies.source.left[:id],
-                companies.source.left[:organization_id],
                 companies.source.left[:name],
                 first_orders[:id].as('first_order_id'),
                 last_orders[:id].as('last_order_id')
@@ -794,7 +796,15 @@ describe Export::Model do
             commentables_content = Arel::Nodes::As.new(commentables.source.left, Arel::Nodes::Grouping.new(branches.union_all(organizations).union_all(products)))
 
             comments = Comment.arel_table.from
-            comments.project(comments.source.left[Arel.star])
+            comments.projections = [
+              comments.source.left[:id],
+              comments.source.left[:description],
+              comments.source.left[:role_id],
+              comments.source.left[:commentable_type],
+              comments.source.left[:commentable_id],
+              comments.source.left[:created_at],
+              comments.source.left[:updated_at]
+            ]
             comments.where(Arel::Nodes::Grouping.new([comments.source.left[:commentable_type], comments.source.left[:commentable_id]]).in(commentables))
                     .with(commentables_content)
 
@@ -826,7 +836,15 @@ describe Export::Model do
             commentables_content = Arel::Nodes::As.new(commentables.source.left, Arel::Nodes::Grouping.new(organizations.ast))
 
             comments = Comment.arel_table.from
-            comments.project(comments.source.left[Arel.star])
+            comments.projections = [
+              comments.source.left[:id],
+              comments.source.left[:description],
+              comments.source.left[:role_id],
+              comments.source.left[:commentable_type],
+              comments.source.left[:commentable_id],
+              comments.source.left[:created_at],
+              comments.source.left[:updated_at]
+            ]
             comments.where(comments.source.left[:id].eq(Arel::Nodes::BindParam.new))
             comments.where(Arel::Nodes::Grouping.new([comments.source.left[:commentable_type], comments.source.left[:commentable_id]]).in(commentables))
                     .with(commentables_content)
@@ -944,7 +962,15 @@ describe Export::Model do
               commentables_content = Arel::Nodes::As.new(commentables.source.left, Arel::Nodes::Grouping.new(orders.ast))
 
               comments = Comment.arel_table.from
-              comments.project(comments.source.left[Arel.star])
+              comments.projections = [
+                comments.source.left[:id],
+                comments.source.left[:description],
+                comments.source.left[:role_id],
+                comments.source.left[:commentable_type],
+                comments.source.left[:commentable_id],
+                comments.source.left[:created_at],
+                comments.source.left[:updated_at]
+              ]
               comments.where(Arel::Nodes::Grouping.new([comments.source.left[:commentable_type], comments.source.left[:commentable_id]]).in(commentables))
                       .with(commentables_content)
 
@@ -976,7 +1002,15 @@ describe Export::Model do
               commentables_content = Arel::Nodes::As.new(commentables.source.left, Arel::Nodes::Grouping.new(orders.ast))
 
               comments = Comment.arel_table.from
-              comments.project(comments.source.left[Arel.star])
+              comments.projections = [
+                comments.source.left[:id],
+                comments.source.left[:description],
+                comments.source.left[:role_id],
+                comments.source.left[:commentable_type],
+                comments.source.left[:commentable_id],
+                comments.source.left[:created_at],
+                comments.source.left[:updated_at]
+              ]
               comments.where(comments.source.left[:id].eq(Arel::Nodes::BindParam.new))
               comments.where(Arel::Nodes::Grouping.new([comments.source.left[:commentable_type], comments.source.left[:commentable_id]]).in(commentables))
                       .with(commentables_content)
@@ -1180,7 +1214,6 @@ describe Export::Model do
               comments.projections = [
                 comments.source.left[:id],
                 comments.source.left[:description],
-                comments.source.left[:role_id],
                 soft_commentables[:type].as('commentable_type'),
                 soft_commentables[:id].as('commentable_id')
               ]

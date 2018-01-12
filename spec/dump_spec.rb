@@ -6,7 +6,7 @@ describe Export::Dump do
   let(:dump) { described_class.new }
 
   describe 'dump info' do
-    subject { dump.all_models }
+    subject { dump.models }
 
     describe 'ignored' do
       before do

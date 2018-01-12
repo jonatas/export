@@ -17,6 +17,7 @@ module Export
     # @return [Model] the new model.
     def initialize(clazz)
       @clazz = clazz
+      @columns = {}
       @ignore = false
     end
 
@@ -80,15 +81,16 @@ module Export
       @scope_block = block
     end
 
-    # Allows dependencies to be ignored in scoping process. The dependencies
-    # are just ignored, like if those columns were just data columns.
+    # Allows dependencies to be ignored in scoping process.
     #
     # @param clazz [Symbol] the names of the dependencies.
     def ignore_dependency(*args)
       raise 'Cannot ignore dependencies without loading.' unless @dump
 
       args.each do |name|
-        @dependencies.find { |d| d.name == name }.ignore
+        dependency = @dependencies.find { |d| d.name == name }
+        dependency.ignore
+        ignore_columns dependency.foreign_key, dependency.foreign_type
       end
     end
     alias ignore_dependencies ignore_dependency
@@ -190,7 +192,7 @@ module Export
       end
 
       unless soft_dependencies.empty?
-        @scope.manager.projections = @clazz.column_names.map do |column|
+        @scope.manager.projections = enabled_columns.keys.map do |column|
           info = soft_dependencies.find { |dt| dt.dependency.foreign_key == column }
           next info.table[info.dependency.models.first.clazz.primary_key].as(info.dependency.foreign_key) if info
 
@@ -231,6 +233,46 @@ module Export
       scope_count / total.to_f if total.positive?
     end
 
+    # The columns of the model. This method is always updated based on Active
+    # Record content, since this can be reloaded any time. The columns
+    # information are preserved, though.
+    #
+    # @return [Hash] the columns, including ignored ones.
+    def columns
+      @columns = @clazz.columns_hash.map do |name, column|
+        [name, @columns[name] || Column.new(column, @dump)]
+      end.to_h.with_indifferent_access
+    end
+
+    # Gives all columns of a model that were not explicitly ignored.
+    #
+    # @return [Array] the enabled columns
+    def enabled_columns
+      columns.reject { |_, c| c.ignore? }.to_h.with_indifferent_access
+    end
+
+    # Allows columns to be ignored in scoping process.
+    #
+    # @param clazz [Symbol] the names of the columns.
+    def ignore_column(*args)
+      args.each { |a| columns[a].ignore if a }
+    end
+    alias ignore_columns ignore_column
+
+    # Returns a column of the model, if exists.
+    #
+    # @param name the name of the column.
+    # @param block if a block is given, then the block is called in the context
+    #              of the column.
+    # @return [Column] the column.
+    def column_for(name, &block)
+      column = columns[name]
+      column.config(&block) if column && block_given?
+
+      column
+    end
+    alias column column_for
+
     protected
 
     delegate :arel_table, to: :clazz
@@ -240,6 +282,7 @@ module Export
 
       relation = @scope_block ? @clazz.instance_exec(&@scope_block) : @clazz.all
       @hard_scope = Statement.from_relation(relation)
+      @hard_scope.manager.projections = enabled_columns.keys.map { |c| arel_table[c] }
 
       enabled_dependencies.each do |dependency|
         if dependency.polymorphic?

@@ -20,18 +20,26 @@ describe Export::ContentPrinter do
         User.create email: 'maria_ferry@schoenfisher.info',
                     name: 'Tennille Cummerata'
         Organization.create name: 'Lindsey Mertz'
+
+        dump.config do
+          model(User).ignore_columns :created_at
+          model(User).column(:updated_at).nullify
+          column(:email) do
+            replace
+          end
+        end
       end
 
       let(:batch_size) { 2 }
 
       it do
         is_expected.to eq <<~SQL
-          INSERT INTO users (id, email, name, current_role_id) VALUES (
-            (1, 'jamika@conroy.ca', 'Yuki Grady', NULL),
-            (2, 'elizabeth_christiansen@metz.info', 'Lisandra Dach', NULL)
+          INSERT INTO users (id, email, name, current_role_id, updated_at) VALUES (
+            (1, 'jamika+conroy.ca@example.com', 'Yuki Grady', NULL, NULL),
+            (2, 'elizabeth_christiansen+metz.info@example.com', 'Lisandra Dach', NULL, NULL)
           );
-          INSERT INTO users (id, email, name, current_role_id) VALUES (
-            (3, 'maria_ferry@schoenfisher.info', 'Tennille Cummerata', NULL)
+          INSERT INTO users (id, email, name, current_role_id, updated_at) VALUES (
+            (3, 'maria_ferry+schoenfisher.info@example.com', 'Tennille Cummerata', NULL, NULL)
           );
           INSERT INTO organizations (id, name) VALUES (
             (1, 'Lindsey Mertz')
