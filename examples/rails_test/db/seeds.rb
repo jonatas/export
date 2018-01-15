@@ -6,8 +6,6 @@
 #   movies = Movie.create([{ name: 'Star Wars' }, { name: 'Lord of the Rings' }])
 #   Character.create(name: 'Luke', movie: movies.first)
 #
-require 'ffaker'
-
 User.destroy_all
 10_000.times do |i|
   user = User.create(full_name: FFaker::Name.name,
