@@ -36,7 +36,7 @@ module Export
     # Reloads the mutable internal state of the dependency.
     def reload
       klasses = if @reflection.polymorphic?
-                  @reflection.active_record.distinct.pluck(reflection.foreign_type).map(&:safe_constantize)
+                  @reflection.active_record.distinct.order(reflection.foreign_type).pluck(reflection.foreign_type).map(&:safe_constantize)
                 else
                   [@reflection.klass]
                 end

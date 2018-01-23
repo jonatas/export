@@ -24,7 +24,10 @@ RSpec::Matchers.define :eq_statement do |expected|
         raise 'expected that binds would match'
       end
 
-      ActiveRecord::Base.connection.raw_connection.prepare(actual_sql).close
+      ActiveRecord::Base.connection.raw_connection.tap do |pg|
+        pg.prepare('actual', actual_sql)
+        pg.exec('DEALLOCATE "actual"')
+      end
 
       true
     rescue => e

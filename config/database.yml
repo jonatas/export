@@ -1,3 +1,0 @@
-test:
-  database: ':memory:'
-  adapter: sqlite3

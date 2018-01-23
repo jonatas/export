@@ -1,0 +1,6 @@
+test:
+  adapter: postgresql
+  host: localhost
+  username: username
+  password: password
+  database: export
